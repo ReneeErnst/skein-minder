@@ -137,3 +137,115 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
 def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
     return [normalize_stash_item(item) for item in raw_items]
+
+
+# Weight ordering for adjacency checks (lower index = lighter)
+_WEIGHT_ORDER: list[WeightCategory] = [
+    WeightCategory.LACE,
+    WeightCategory.FINGERING,
+    WeightCategory.SPORT,
+    WeightCategory.DK,
+    WeightCategory.WORSTED,
+    WeightCategory.ARAN,
+    WeightCategory.BULKY,
+    WeightCategory.SUPER_BULKY,
+]
+
+
+def yardage_buffer(item: StashItem, pattern_yards: float) -> float:
+    """Return percent overage (positive) or deficit (negative) vs pattern yardage."""
+    return (item.yards_total - pattern_yards) / pattern_yards * 100.0
+
+
+def weight_match(item: StashItem, pattern_weight: WeightCategory) -> MatchScore:
+    """Return EXACT, ADJACENT (one step), or MISMATCH."""
+    if item.weight_category == WeightCategory.UNKNOWN:
+        return MatchScore.MISMATCH
+    if item.weight_category == pattern_weight:
+        return MatchScore.EXACT
+    try:
+        stash_idx = _WEIGHT_ORDER.index(item.weight_category)
+        pattern_idx = _WEIGHT_ORDER.index(pattern_weight)
+    except ValueError:
+        return MatchScore.MISMATCH
+    if abs(stash_idx - pattern_idx) == 1:
+        return MatchScore.ADJACENT
+    return MatchScore.MISMATCH
+
+
+# Fiber rules: maps lowercase fiber keywords to garment type scores.
+# Structure: {fiber_keyword: {garment_keyword: MatchScore}}
+_FIBER_RULES: dict[str, dict[str, MatchScore]] = {
+    "wool": {
+        "cardigan": MatchScore.EXACT,
+        "sweater": MatchScore.EXACT,
+        "hat": MatchScore.EXACT,
+        "mittens": MatchScore.EXACT,
+        "socks": MatchScore.ADJACENT,
+        "baby": MatchScore.ADJACENT,
+        "cables": MatchScore.EXACT,
+        "shawl": MatchScore.EXACT,
+    },
+    "superwash": {
+        "baby": MatchScore.EXACT,
+        "socks": MatchScore.EXACT,
+        "cardigan": MatchScore.EXACT,
+        "sweater": MatchScore.EXACT,
+        "cables": MatchScore.EXACT,
+    },
+    "alpaca": {
+        "cardigan": MatchScore.EXACT,
+        "sweater": MatchScore.EXACT,
+        "shawl": MatchScore.EXACT,
+        "cables": MatchScore.ADJACENT,
+        "socks": MatchScore.MISMATCH,
+    },
+    "cotton": {
+        "cardigan": MatchScore.ADJACENT,
+        "sweater": MatchScore.ADJACENT,
+        "tank": MatchScore.EXACT,
+        "summer": MatchScore.EXACT,
+        "cables": MatchScore.MISMATCH,
+    },
+    "acrylic": {
+        "cardigan": MatchScore.ADJACENT,
+        "sweater": MatchScore.ADJACENT,
+        "baby": MatchScore.EXACT,
+        "cables": MatchScore.ADJACENT,
+        "socks": MatchScore.ADJACENT,
+    },
+    "silk": {
+        "shawl": MatchScore.EXACT,
+        "cardigan": MatchScore.ADJACENT,
+        "cables": MatchScore.MISMATCH,
+        "socks": MatchScore.MISMATCH,
+    },
+    "nylon": {
+        "socks": MatchScore.EXACT,
+        "cardigan": MatchScore.ADJACENT,
+    },
+    "linen": {
+        "summer": MatchScore.EXACT,
+        "tank": MatchScore.EXACT,
+        "cardigan": MatchScore.ADJACENT,
+        "cables": MatchScore.MISMATCH,
+    },
+}
+
+
+def fiber_suitability(item: StashItem, garment_type: str) -> MatchScore:
+    """Return best MatchScore across all fibers in the item for the given garment."""
+    garment = garment_type.lower().strip()
+    best = MatchScore.ADJACENT  # default for unknown fiber
+
+    for fiber_name in item.fiber:
+        fiber_lower = fiber_name.lower()
+        for keyword, rules in _FIBER_RULES.items():
+            if keyword in fiber_lower:
+                score = rules.get(garment, MatchScore.ADJACENT)
+                if score == MatchScore.EXACT:
+                    return MatchScore.EXACT
+                if score == MatchScore.MISMATCH and best != MatchScore.EXACT:
+                    best = MatchScore.MISMATCH
+
+    return best
