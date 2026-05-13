@@ -220,3 +220,4 @@ __marimo__/
 # superpowers
 docs/superpowers/*
 !docs/superpowers/specs/
+!docs/superpowers/plans/
