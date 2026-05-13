@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from skeinminder.ravelry.exceptions import NormalizationError
+from skeinminder.ravelry.models import (
+    RawFiberCategory,
+    RawStashItem,
+    RawStashListResponse,
+    RawYarn,
+    RawYarnWeight,
+)
+from skeinminder.ravelry.normalizer import (
+    ProjectQuantity,
+    StashItem,
+    WeightCategory,
+    normalize_stash,
+    normalize_stash_item,
+    project_quantity_from_yards,
+    weight_category_from_string,
+)
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _make_raw_item(
+    *,
+    item_id: int = 1,
+    skeins: float | None = 3.0,
+    colorway: str | None = "Mossy Green",
+    yarn_name: str | None = None,
+    weight: str = "Worsted",
+    yardage: float = 218.0,
+    grams: float = 100.0,
+    fibers: list[str] | None = None,
+    company: str = "Sample Brand",
+    yarn_id: int = 100,
+) -> RawStashItem:
+    return RawStashItem(
+        id=item_id,
+        colorway_name=colorway,
+        yarn_name=yarn_name,
+        skeins=skeins,
+        yarn=RawYarn(
+            id=yarn_id,
+            name="Test Yarn",
+            yarn_company_name=company,
+            yarn_weight=RawYarnWeight(id=1, name=weight),
+            yardage=yardage,
+            grams=grams,
+            fiber_categories=[
+                RawFiberCategory(id=i, name=f) for i, f in enumerate(fibers or [])
+            ],
+        ),
+    )
+
+
+def test_weight_category_worsted() -> None:
+    assert weight_category_from_string("Worsted") == WeightCategory.WORSTED
+
+
+def test_weight_category_fingering() -> None:
+    assert weight_category_from_string("Fingering") == WeightCategory.FINGERING
+
+
+def test_weight_category_dk() -> None:
+    assert weight_category_from_string("DK") == WeightCategory.DK
+
+
+def test_weight_category_lace() -> None:
+    assert weight_category_from_string("Lace") == WeightCategory.LACE
+
+
+def test_weight_category_unknown_string() -> None:
+    assert weight_category_from_string("CrazyUnknown") == WeightCategory.UNKNOWN
+
+
+def test_weight_category_none() -> None:
+    assert weight_category_from_string(None) == WeightCategory.UNKNOWN
+
+
+def test_project_quantity_scrap() -> None:
+    assert project_quantity_from_yards(150.0) == ProjectQuantity.SCRAP
+
+
+def test_project_quantity_accessory_lower_bound() -> None:
+    assert project_quantity_from_yards(200.0) == ProjectQuantity.ACCESSORY
+
+
+def test_project_quantity_accessory_upper_bound() -> None:
+    assert project_quantity_from_yards(799.0) == ProjectQuantity.ACCESSORY
+
+
+def test_project_quantity_sweater() -> None:
+    assert project_quantity_from_yards(800.0) == ProjectQuantity.SWEATER
+
+
+def test_stash_item_construction() -> None:
+    item = StashItem(
+        stash_id=10001,
+        brand="Sample Brand",
+        yarn_name="Worsted Wool",
+        colorway="Moss",
+        weight_category=WeightCategory.WORSTED,
+        fiber=["Wool"],
+        color_family="Greens",
+        skeins=5.0,
+        yards_per_skein=218.0,
+        yards_total=1090.0,
+        grams_total=500.0,
+        notes=None,
+        project_quantity=ProjectQuantity.SWEATER,
+    )
+    assert item.stash_id == 10001
+    assert item.project_quantity == ProjectQuantity.SWEATER
+
+
+def test_normalize_stash_item_worsted() -> None:
+    raw = _make_raw_item(weight="Worsted", skeins=5.0, yardage=218.0, fibers=["Wool"])
+    item = normalize_stash_item(raw)
+    assert item.weight_category == WeightCategory.WORSTED
+    assert item.yards_total == pytest.approx(5.0 * 218.0)
+    assert item.project_quantity == ProjectQuantity.SWEATER
+    assert "Wool" in item.fiber
+    assert item.brand == "Sample Brand"
+    assert item.colorway == "Mossy Green"
+
+
+def test_normalize_stash_item_fingering() -> None:
+    raw = _make_raw_item(
+        weight="Fingering", skeins=2.0, yardage=400.0, fibers=["Nylon"]
+    )
+    item = normalize_stash_item(raw)
+    assert item.weight_category == WeightCategory.FINGERING
+    assert item.yards_total == pytest.approx(2.0 * 400.0)
+    assert item.project_quantity == ProjectQuantity.SWEATER
+    assert "Nylon" in item.fiber
+
+
+def test_normalize_stash_item_dk_scrap() -> None:
+    raw = _make_raw_item(weight="DK", skeins=1.0, yardage=125.0)
+    item = normalize_stash_item(raw)
+    assert item.weight_category == WeightCategory.DK
+    assert item.yards_total == pytest.approx(125.0)
+    assert item.project_quantity == ProjectQuantity.SCRAP
+
+
+def test_normalize_stash_item_defaults_skeins_to_one() -> None:
+    raw = _make_raw_item(skeins=None, yardage=400.0)
+    item = normalize_stash_item(raw)
+    assert item.skeins == 1.0
+    assert item.yards_total == pytest.approx(400.0)
+
+
+def test_normalize_stash_raises_without_yardage() -> None:
+    raw = _make_raw_item()
+    assert raw.yarn is not None
+    raw_no_yardage = raw.model_copy(
+        update={"yarn": raw.yarn.model_copy(update={"yardage": None})}
+    )
+    with pytest.raises(NormalizationError, match="yardage"):
+        normalize_stash_item(raw_no_yardage)
+
+
+def test_normalize_stash_skips_items_without_yarn() -> None:
+    items = [
+        _make_raw_item(item_id=1, yardage=300.0),
+        RawStashItem(id=2),  # no yarn
+        _make_raw_item(item_id=3, yardage=500.0),
+    ]
+    result = normalize_stash(items)
+    assert len(result) == 2
+    assert all(isinstance(i, StashItem) for i in result)
+    assert result[0].stash_id == 1
+    assert result[1].stash_id == 3
+
+
+def test_normalize_stash_returns_list() -> None:
+    data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
+    raw_list = RawStashListResponse.model_validate(data)
+    items = normalize_stash(raw_list.stash)
+    assert len(items) == 9  # 10 fixture items, 1 has no yarn and is skipped
+    assert all(isinstance(i, StashItem) for i in items)

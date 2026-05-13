@@ -6,16 +6,14 @@ _Last updated: 2026-05-12_
 
 **SkeinMinder** — a Ravelry-powered multi-agent studio planner that turns a real yarn stash into feasible, scheduled, human-approved fiber projects.
 
-## Demo thesis
+## Engineering goals
 
-This should be positioned as more than a hobby app. The interview story is:
+SkeinMinder is a production-shaped LangGraph application built on top of the Ravelry API. It reads a real Ravelry stash, uses multiple specialized agents to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint.
 
-> I took an older exploratory Ravelry API/data science project, extracted the useful integration ideas, and rebuilt the concept as a production-shaped LangGraph application. The system reads my real Ravelry stash, uses multiple specialized agents to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint.
-
-The strongest engineering themes to demonstrate are:
+Key engineering themes:
 
 - API integration with a real third-party system.
-- Typed service-layer design around legacy exploratory code.
+- Typed service-layer design.
 - Stateful multi-agent orchestration with LangGraph.
 - Human-in-the-loop approvals before side effects.
 - Deterministic tool execution separated from LLM reasoning.
@@ -23,92 +21,206 @@ The strongest engineering themes to demonstrate are:
 
 ## Repository strategy
 
-### Recommendation: create a new repo, preserve the old repo as provenance
+The new repo `skein-minder` was created from scratch. The old repo
+[`ReneeErnst/ravelry_playground`](https://github.com/ReneeErnst/ravelry_playground)
+is preserved as provenance — it demonstrates prior Ravelry API exploration using
+Cauldron notebooks, BigQuery, and GCS. The new project is the modernized
+application version.
 
-The old repo, [`ReneeErnst/ravelry_playground`](https://github.com/ReneeErnst/ravelry_playground), is useful evidence of prior Ravelry API exploration, but it is not the shape I would use for an interview-ready LangGraph application.
+## Implementation status
 
-The old repo is framed as “a place to play with data from the Ravelry API,” and the README describes large exploratory pulls, Cauldron notebooks, sweater-pattern data, pattern detail pulls, project-level data, yarn detail pulls, and chunked saves to local files or GCS. That is valuable background, but the new project needs a cleaner application architecture.
+### Phase 0 — Project setup ✅ COMPLETE
 
-Best path:
+Repo exists at `skein-minder` on the `project-init` branch (not yet merged to
+`main`). Stack: Python 3.13, uv, hatchling, ruff, mypy (strict), pytest,
+pre-commit. CI runs on PRs and pushes to `main` via GitHub Actions.
 
-1. Create a new repo, probably named `skeinminder`, `ravelry-stash-agent`, or `skeinminder-langgraph`.
-2. Add a note in the new README that it is inspired by and partially informed by the older `ravelry_playground` exploration.
-3. Copy no secrets and avoid copying old notebook-heavy code directly.
-4. Reuse concepts, not structure: Ravelry auth, reusable request helper, chunking/caching awareness, pattern search, yarn detail normalization.
-5. Optionally archive the old repo or add a short pointer in its README to the new project.
+Commands:
 
-### Why not revive the old repo directly?
+```bash
+uv sync               # install dependencies
+make lint             # ruff check
+make format           # ruff format
+make typecheck        # mypy strict
+make test             # pytest
+make check            # pre-commit + pytest (what CI runs)
+```
 
-The old repo is valuable, but its current shape is exploratory:
+### Phase 1 — Ravelry read-only client ✅ COMPLETE
 
-- It uses Cauldron notebooks rather than a modern app/test structure.
-- It has data science dependencies such as `pandas`, `pandas_gbq`, `numpy`, `h5py`, `tables`, and Google Cloud libraries.
-- It stores credentials through local files like `user.txt`, `pwd.txt`, and `token.txt`, which made sense for exploration but should be replaced with environment variables or a secret manager.
-- It is oriented around batch data pulls and analysis rather than interactive, stateful agent workflows.
+All of the following is implemented, tested (58 tests passing), and passing CI.
 
-For an interview demo, a new repo communicates intentional product engineering. The old repo can still be used as a credibility anchor: “I had explored this API before; this project is the modernized application version.”
+**Files built:**
 
-### If choosing to revive the old repo anyway
+```
+src/skeinminder/
+  config.py                  # ConfigError, get_ravelry_credentials(), RAVELRY_BASE_URL
+  ravelry/
+    exceptions.py            # RavelryError, RavelryAuthError, RavelryRateLimitError,
+                             #   RavelryAPIError(status_code, url, body), NormalizationError
+    models.py                # 10 raw Pydantic models (see below)
+    client.py                # RavelryClient with Basic Auth, retries, pagination
+    sanitizer.py             # strips personal fields before committing fixtures
+    recorder.py              # one-shot live fixture capture script
+  cli.py                     # `skeinminder stash [--fixture]` click command
+tests/
+  conftest.py                # FixtureTransport, fixture_client, fixture_transport fixtures
+  fixtures/
+    current_user.json        # sanitized: id=7036752, username="[REDACTED]"
+    stash_list.json          # 10 representative items (trimmed from 1,379)
+    stash_detail_sample.json # first 5 items from stash_list, same shape
+    stash_list_full.json     # all 1,379 items — GITIGNORED, local only
+```
 
-Revival would require a modernization pass before adding LangGraph:
+**Raw Pydantic models** (`models.py`, all use `extra="ignore"`):
 
-- Create a fresh branch, e.g. `modern-langgraph-demo`.
-- Replace Cauldron workflow with a standard Python package layout.
-- Move credentials to `.env` and document required variables.
-- Add `.env.example`.
-- Remove or quarantine old GCP/BigQuery dependencies unless needed.
-- Add `pyproject.toml` with modern dependency management.
-- Add `ruff`, `pytest`, and type checking.
-- Add a typed `RavelryClient` using `httpx` or `requests`.
-- Add Pydantic models for stash items, yarns, patterns, and projects.
-- Add fixture recordings for demo stability.
-- Add a dry-run mode for all write operations.
-- Add CI that runs formatting, linting, and unit tests.
-- Add a new README section explaining what is legacy exploration versus current app code.
+- `RawFiberCategory` — id, name
+- `RawYarnWeight` — id, name
+- `RawYarn` — id, name, yarn_company_name, yarn_weight, grams (float|None), yardage (float|None), fiber_categories
+- `RawStashStatus` — id, name
+- `RawStashItem` — id, permalink, colorway_name, stash_status, skeins (float|None), notes, yarn_name, yarn, color_family_name
+- `RawPaginator` — page, page_size (optional), results, pages (alias: page_count), last_page
+- `RawStashListResponse` — stash (list), paginator
+- `RawStashDetailResponse` — stash (single item)
+- `RawUser` — id, username, small_photo_url, large_photo_url
+- `RawCurrentUserResponse` — user
 
-## Current findings
+**RavelryClient** (`client.py`):
 
-### Existing `ravelry_playground` repo
+- Constructor: `RavelryClient(username, password)` or `RavelryClient(transport=...)` for testing. Raises `ConfigError` if no credentials and no transport.
+- `get_current_user() -> RawUser`
+- `get_stash_list(username: str) -> list[RawStashItem]` — paginates automatically
+- `get_stash_detail(username: str, stash_id: int) -> RawStashItem`
+- `_get(path, params)` — internal, wrapped with tenacity (3 retries, exponential backoff). Retries on 429, 5xx, and network errors (status_code=0).
+- Implements context manager (`with RavelryClient(...) as client`).
 
-The existing repo already contains useful signals:
+**FixtureTransport** (`tests/conftest.py`):
 
-- It is public and has 36 commits.
-- The README describes Ravelry API data pulls for sweater patterns, pattern details, pattern projects, and yarn details.
-- It explicitly mentions responsible chunking and monitoring API usage.
-- The technical README documents both Basic Auth and OAuth 2.0 paths.
-- The helper function `ravelry_get_data` builds URLs like `https://api.ravelry.com/{path}.json` and supports Basic Auth or bearer-token OAuth.
-- The old dependency list is data-exploration oriented: `wheel pandas pandas_gbq numpy cauldron-notebook h5py tables google-cloud-bigquery google-cloud-storage`.
+Custom `httpx.BaseTransport` that routes requests to local fixture files without hitting the network. Use `fixture_client` pytest fixture to get a `RavelryClient` backed by fixtures.
 
-Relevant source:
+**CLI** (`cli.py`):
 
-- https://github.com/ReneeErnst/ravelry_playground
-- https://raw.githubusercontent.com/ReneeErnst/ravelry_playground/master/README_tech.md
-- https://raw.githubusercontent.com/ReneeErnst/ravelry_playground/master/ravelry_playground/puller.py
-- https://raw.githubusercontent.com/ReneeErnst/ravelry_playground/master/requirements.txt
+```bash
+uv run skeinminder stash           # live mode, requires .env credentials
+uv run skeinminder stash --fixture # fixture mode, no credentials needed
+```
 
-### Ravelry API status and caveats
+**Recorder** (run once to refresh fixtures from live API):
 
-- Ravelry still publicly points developers toward the Ravelry API group from its Goodies page.
-- Ravelry still documents stash spreadsheet export as a fallback by clicking the Excel icon in the stash section of the notebook.
-- Ravelry’s public Goodies page also mentions a Project Progress API for exporting much of project data as JSON.
-- Official detailed API documentation appears to require a Ravelry login, so exact endpoint schemas should be verified from the logged-in developer account before implementation.
-- The `pyravelry` wrapper documentation says the API wrapper requires a Ravelry account and username/API key using HTTP Basic Auth, and it advises getting read/write permissions for full endpoint access.
-- A newer Rust client, `ravelry-rs`, claims typed async coverage for patterns, yarns, projects, stash, messages, uploads, favorites, bundles, and friends. It lists project methods including `list`, `show`, `create`, `update`, and `delete`. This is useful supporting evidence but should not replace verification against official Ravelry docs.
+```bash
+uv run python -m skeinminder.ravelry.recorder
+```
 
-Relevant sources:
+Requires `.env` with `RAVELRY_USERNAME` and `RAVELRY_PASSWORD`. Writes sanitized
+JSON to `tests/fixtures/`. Review before committing — ensure no personal data remains.
 
-- https://www.ravelry.com/about/goodies
-- https://www.ravelry.com/api
-- https://www.coultontheuer.com/pyravelry/
-- https://github.com/strickvl/ravelry-rs
+### Phase 2 — Stash normalization and scoring ✅ COMPLETE
 
-### LangGraph fit
+**Files built:**
+
+```
+src/skeinminder/ravelry/
+  normalizer.py   # enums, StashItem, normalize_stash_item, normalize_stash,
+                  #   yardage_buffer, weight_match, fiber_suitability
+tests/
+  test_normalizer.py
+  test_scoring.py
+```
+
+**Domain model** (`normalizer.py`):
+
+```python
+class WeightCategory(str, Enum):
+    LACE / COBWEB / THREAD / LIGHT_FINGERING / FINGERING /
+    SPORT / DK / WORSTED / ARAN / BULKY / SUPER_BULKY / UNKNOWN
+
+class ProjectQuantity(str, Enum):
+    SWEATER    # 800+ yards
+    ACCESSORY  # 200–799 yards
+    SCRAP      # < 200 yards
+
+class MatchScore(str, Enum):
+    EXACT / ADJACENT / INCOMPATIBLE / UNKNOWN
+
+@dataclass
+class StashItem:
+    stash_id: int
+    brand: str
+    yarn_name: str
+    colorway: str | None
+    weight_category: WeightCategory
+    fiber: list[str]
+    color_family: str | None
+    skeins: float
+    yards_per_skein: float
+    yards_total: float
+    grams_total: float | None
+    notes: str | None
+    project_quantity: ProjectQuantity
+```
+
+**Key normalizer behaviors:**
+
+- `normalize_stash_item(raw)`: raises `NormalizationError` if yarn is None or yarn.yardage is None. If `skeins` is None (common in the list endpoint response), defaults to 1.0.
+- `normalize_stash(raw_items)`: calls normalize_stash_item for each item; silently skips items that raise NormalizationError (logs at DEBUG). Returns only items that could be fully normalized.
+- `yardage_buffer(stash_yards, pattern_yards) -> float`: ratio of extra yardage. E.g., 0.15 means 15% buffer.
+- `weight_match(stash_weight, pattern_weight) -> MatchScore`: EXACT, ADJACENT (one step away in weight order), or INCOMPATIBLE.
+- `fiber_suitability(fiber_list, garment_type) -> MatchScore`: based on known fiber/garment rules.
+
+### Phases 3–8 — NOT YET STARTED
+
+Next up is Phase 3: first LangGraph MVP. See the implementation plan below.
+
+---
+
+## Critical Ravelry API discoveries
+
+These were found through live testing and should save time in future sessions.
+
+**Authentication:**
+
+- Use "Personal Account Access" app type (not "Read Only"). The stash endpoint requires write-level auth even for reads. A read-only app returns: `403 Forbidden. This is not a read only API method.`
+- Basic Auth: `RAVELRY_USERNAME` = access key (alphanumeric API key), `RAVELRY_PASSWORD` = personal key. These are NOT the Ravelry login credentials.
+- Credentials do not auto-expire but should be regenerated periodically. Store in `.env` (gitignored).
+
+**Endpoint corrections (verified against official docs):**
+
+| Endpoint | Correct path |
+|---|---|
+| Current user | `GET /current_user.json` |
+| Stash list | `GET /people/{username}/stash/list.json` |
+| Stash detail | `GET /people/{username}/stash/{id}.json` |
+
+Note: the username in these URLs is the Ravelry display username (e.g., "KnittingBunnyMom"), NOT the API access key. Always call `get_current_user()` first to get the correct username from `user.username`.
+
+**Paginator field name:**
+
+The real API returns `page_count` (not `pages`). `RawPaginator.pages` uses `AliasChoices("pages", "page_count")` to accept both the real API and our fixture files.
+
+**Stash list endpoint (Stash "small" format):**
+
+- Returns `skeins=null` for all items — skein count is not populated in the list response.
+- Returns `yarn.yardage` and `yarn.yarn_weight` reliably for items with linked yarn.
+- Returns empty `fiber_categories=[]` for all items — fiber data is not in the list format.
+- `yarn_name` is null for all items; use `yarn.name` as fallback.
+- Items without a linked yarn (`yarn=null`) cannot be normalized for yardage.
+
+**Real stash scale:**
+
+The demo user has 1,379 stash items. This is much larger than average and useful for stress-testing the agent design. The committed fixture is trimmed to 10 items (one per weight category, varied statuses). The full 1,379-item file is at `tests/fixtures/stash_list_full.json` (gitignored, local only).
+
+Fixture item breakdown:
+- 9 items successfully normalize (have linked yarn with yardage)
+- 1 item has no yarn link and is silently skipped by `normalize_stash`
+- Sweater-quantity items (800+ yds): currently 1 (Lace/990 yds). More will be needed for a compelling agent demo — pull from `stash_list_full.json` when building Phase 3.
+
+---
+
+## LangGraph fit
 
 LangGraph is a good fit because the project needs state, routing, persistence, and human-in-the-loop control. The LangGraph persistence docs say checkpointing enables human-in-the-loop workflows, memory, time travel, and fault-tolerant execution. This is directly relevant for pausing before writing to Ravelry, Notion, Google Calendar, or Google Drive.
 
-Relevant source:
-
-- https://docs.langchain.com/oss/python/langgraph/persistence
+---
 
 ## Product concept
 
@@ -160,6 +272,21 @@ Next actions:
 - Schedule swatching in Google Calendar.
 ```
 
+### LLM context window design constraint
+
+With 1,379 stash items, even a compact normalized representation would overflow
+the LLM context window. The agent architecture must filter the stash before
+passing it to any LLM node. Filtering strategies to consider:
+
+- By weight (match to pattern requirements first)
+- By project_quantity (only sweater-quantity items for sweater requests)
+- By status (only "In stash" items — skip "All used up" and "Traded/sold/gifted")
+- By yardage floor (set a minimum based on the project type)
+
+This is a real design constraint that makes the architecture story stronger, not weaker.
+
+---
+
 ## Agent architecture
 
 ### 1. Supervisor Agent
@@ -181,15 +308,15 @@ Reads stash data from Ravelry.
 Responsibilities:
 
 - Authenticate using approved credentials.
-- Pull current user and stash.
-- Normalize stash fields.
-- Identify sweater quantities, accessory quantities, single skeins, and scraps.
+- Pull current user and stash (via `RavelryClient`).
+- Normalize stash fields (via `normalize_stash`).
+- Filter to actionable items (status "In stash", has yardage).
+- Identify sweater quantities, accessory quantities, and scraps.
 - Cache responses for demo stability.
 
 ### 3. Yarn Normalizer Agent
 
-Turns Ravelry data into agent-friendly project constraints.
-
+Already implemented as `normalizer.py`. Turns `RawStashItem` into `StashItem`.
 Example normalized shape:
 
 ```json
@@ -198,13 +325,14 @@ Example normalized shape:
   "brand": "Example Yarn Co.",
   "yarn_name": "Example Worsted",
   "colorway": "Moss",
-  "weight": "Worsted",
+  "weight_category": "worsted",
   "fiber": ["wool"],
-  "skeins": 5,
-  "yards_total": 1100,
-  "grams_total": 500,
+  "skeins": 5.0,
+  "yards_total": 1100.0,
+  "grams_total": 500.0,
   "color_family": "green",
-  "notes": "possible cardigan yarn"
+  "notes": null,
+  "project_quantity": "sweater"
 }
 ```
 
@@ -225,14 +353,10 @@ Evaluates whether a stash yarn is plausible for a candidate project.
 
 Signals:
 
-- Yardage buffer.
-- Yarn weight match.
-- Fiber and drape match.
-- Gauge risk.
-- Garment type.
-- Color suitability.
-- Washability.
-- Need for contrast yarn.
+- Yardage buffer (use `yardage_buffer()` helper).
+- Yarn weight match (use `weight_match()` helper).
+- Fiber and drape match (use `fiber_suitability()` helper).
+- Gauge risk, garment type, color suitability, washability.
 
 ### 6. Project Fit Agent
 
@@ -240,174 +364,57 @@ Evaluates human/project fit.
 
 Signals:
 
-- Desired season.
-- Time available.
-- Difficulty mood.
-- Wardrobe usefulness.
-- Project novelty.
-- Likelihood of completion.
+- Desired season, time available, difficulty mood, wardrobe usefulness, novelty, likelihood of completion.
 
 ### 7. Project Planner Agent
 
-Creates a realistic plan.
-
-Responsibilities:
-
-- Swatch step.
-- Pattern review step.
-- Cast-on/start step.
-- Milestones.
-- Blocking/finishing.
-- Notes for Ravelry project page.
-- Calendar-ready tasks.
+Creates a realistic plan: swatch step, pattern review, cast-on milestones, blocking, notes for Ravelry project page, calendar-ready tasks.
 
 ### 8. Ravelry Project Creator Agent
 
 Prepares a project payload and asks for approval.
 
-Important design rule:
-
-- The LLM should draft the payload.
-- A deterministic tool should validate and execute the API write.
-- No write should happen without explicit approval.
-
-Potential payload concept:
-
-```json
-{
-  "name": "Fall Texture Cardigan",
-  "pattern_id": 12345,
-  "craft": "knitting",
-  "status": "in-progress",
-  "started": "2026-05-18",
-  "completed": null,
-  "notes": "Generated by SkeinMinder. Swatch first. Yardage buffer: 12%. Use stash item 98765 as main yarn.",
-  "stash_links": [
-    {
-      "stash_id": 98765,
-      "skeins_planned": 5,
-      "role": "main color"
-    }
-  ]
-}
-```
-
-Exact field names must be verified in the logged-in Ravelry API docs.
+Design rule: LLM drafts the payload; a deterministic tool validates and executes the API write; no write happens without explicit approval.
 
 ### 9. Verification Agent
 
 Reads back created/updated records and confirms the side effect succeeded.
 
-Responsibilities:
-
-- Read created Ravelry project.
-- Confirm name, pattern, notes, dates, and stash linkage if supported.
-- Report any mismatch.
-- Log result to the trace/debug view.
-
-## Tool integrations
-
-### Must-have
-
-- Ravelry API read for stash.
-- Ravelry API pattern search/detail, if available.
-- LangGraph orchestration.
-- LangSmith tracing or equivalent logging.
-- Dry-run mode with fixtures.
-
-### Strong next integration
-
-- Ravelry project creation/update.
-
-### Optional but demo-friendly
-
-- Google Calendar for swatching and project milestones.
-- Notion or Airtable for project dashboard.
-- Google Drive for generated project briefs, notes, and images.
-- Slack/email for progress nudges.
+---
 
 ## Implementation plan
 
-### Phase 0 — Project setup and repo decision
-
-Goal: create the foundation.
-
-Tasks:
-
-- Create new repo.
-- Add README with project pitch and old-repo provenance.
-- Add `RESEARCH.md`.
-- Add `pyproject.toml`.
-- Choose stack: Python, LangGraph, Pydantic, httpx or requests, pytest, ruff.
-- Add `.env.example`.
-- Add secret-handling guidance.
-- Add basic CI.
-
-Exit criteria:
-
-- Repo installs locally.
-- Tests run.
-- README clearly explains the interview-demo value.
-
-### Phase 1 — Ravelry read-only client
-
-Goal: prove live Ravelry integration.
-
-Tasks:
-
-- Implement `RavelryClient`.
-- Support Basic Auth first.
-- Add OAuth only if needed for notebook/private/write endpoints.
-- Implement current-user call.
-- Implement stash list call.
-- Implement stash detail call if available.
-- Add retries, timeout, error handling, and logging.
-- Add fixture recording/sanitization.
-
-Exit criteria:
-
-- CLI command can print normalized stash summary.
-- No secrets are logged.
-- Tests pass using fixtures.
-
-### Phase 2 — Stash normalization and scoring
-
-Goal: turn raw API data into project constraints.
-
-Tasks:
-
-- Create Pydantic models: `StashItem`, `Yarn`, `PatternCandidate`, `ProjectRecommendation`.
-- Normalize yarn weight, yardage, grams, fiber, color, notes, quantity.
-- Compute stash categories: sweater quantity, accessory quantity, single skein.
-- Implement scoring helpers for yardage buffer and fiber suitability.
-
-Exit criteria:
-
-- Given raw stash fixtures, system returns clean structured stash summary.
-- Scoring is deterministic and unit-tested.
-
-### Phase 3 — First LangGraph MVP
+### Phase 3 — First LangGraph MVP (NEXT)
 
 Goal: build the simplest useful graph.
 
 Workflow:
 
 ```text
-User goal -> Read stash -> Normalize stash -> Recommend project archetypes -> Return ranked options
+User goal -> Read stash -> Normalize stash -> Filter to available sweater-qty items
+         -> Recommend project archetypes -> Return ranked options
 ```
 
 Tasks:
 
-- Define graph state.
+- Define graph state (TypedDict with stash items, user goal, recommendations, requires_approval flag).
 - Add Supervisor node.
-- Add Stash node.
-- Add Recommendation node.
+- Add Stash node (calls `RavelryClient` or loads fixture).
+- Add Recommendation node (LLM call with filtered stash context).
 - Add final response formatter.
 - Add LangSmith tracing if available.
+- Wire `--fixture` flag to graph (demo mode without live API).
+
+Notes for next session:
+
+- LangGraph requires `langgraph`, `langchain-anthropic` (or equivalent) as dependencies. Add to `pyproject.toml`.
+- Use `claude-sonnet-4-6` (model ID: `claude-sonnet-4-6`) or `claude-haiku-4-5-20251001` for cost. The most capable current model is `claude-opus-4-7`.
+- Stash filtering before the LLM node is critical — see context window constraint above.
+- The `--fixture` CLI flag pattern is already established in `cli.py`; extend it to the graph.
 
 Exit criteria:
 
-- User can ask “What can I make from my stash?”
+- User can ask "What can I make from my stash?"
 - System returns 3 recommendations with structured rationale and risks.
 
 ### Phase 4 — Pattern search and candidate matching
@@ -416,15 +423,11 @@ Goal: use real pattern data when available.
 
 Tasks:
 
-- Verify Ravelry pattern search and pattern detail schemas.
+- Verify Ravelry pattern search endpoint schema (needs logged-in API docs review).
 - Add `PatternScoutAgent`.
-- Match pattern requirements to stash yarn.
+- Match pattern requirements to stash yarn using scoring helpers.
 - Add fallback mode for unavailable API fields.
 - Rank candidates by stash fit, yardage risk, difficulty fit, and project type.
-
-Exit criteria:
-
-- System can recommend specific patterns or clearly explain when it is using archetypes instead.
 
 ### Phase 5 — Human approval checkpoints
 
@@ -438,118 +441,95 @@ Tasks:
 - Store graph thread state.
 - Add rejection/edit path.
 
-Exit criteria:
-
-- Graph can pause, show proposed action, resume after approval, or revise after edits.
-
 ### Phase 6 — Ravelry project write-back
 
 Goal: create or update a Ravelry project.
 
 Tasks:
 
-- Verify official project create/update endpoints and payloads.
-- Add read/write credentials.
-- Implement `draft_ravelry_project` tool.
-- Implement `create_ravelry_project` tool.
-- Implement `update_ravelry_project_notes` if needed.
-- Implement stash linkage if API supports it.
-- Add verification read-back.
+- Verify official project create/update endpoints and payloads (logged-in docs).
+- Add `draft_ravelry_project` and `create_ravelry_project` tools.
 - Add dry-run mode.
-
-Exit criteria:
-
-- In dry-run mode, payload is displayed but not written.
-- In live mode, after approval, a test Ravelry project is created and verified.
+- Add verification read-back.
 
 ### Phase 7 — External productivity integration
 
-Goal: show cross-service orchestration.
+Google Calendar first (value is easy to demo). Schedule swatching and milestones. Optional: Notion project dashboard, Google Drive project brief.
 
-Recommended first external write:
+### Phase 8 — Demo polish
 
-- Google Calendar, because the value is easy to see in a demo.
+Deterministic demo data, fixture mode toggle, sample prompt scripts, screenshots/GIFs, architecture diagram, known-limitations section.
 
-Tasks:
+---
 
-- Add calendar tool.
-- Schedule swatching, cast-on, check-in, and target finish milestones.
-- Add approval before calendar writes.
-- Add verification.
-
-Optional:
-
-- Notion or Airtable project dashboard.
-- Google Drive generated project brief.
-
-Exit criteria:
-
-- Approved project creates Ravelry project plus calendar milestones.
-
-### Phase 8 — Interview demo polish
-
-Goal: make it reliable and explainable.
-
-Tasks:
-
-- Add deterministic demo data.
-- Add live mode / fixture mode toggle.
-- Add CLI or simple Streamlit/FastAPI UI.
-- Add sample prompt scripts.
-- Add screenshots/GIFs.
-- Add architecture diagram.
-- Add “what I would do next” section.
-- Add known limitations.
-
-Exit criteria:
-
-- Demo works without live API access.
-- Live integration can be shown when credentials/network cooperate.
-- README tells a strong architecture story.
-
-## Suggested repo structure
+## Current repo structure
 
 ```text
-skeinminder/
+skein-minder/
   README.md
   RESEARCH.md
+  CLAUDE.md
   pyproject.toml
-  .env.example
+  uv.lock
+  Makefile
+  .env.example         # RAVELRY_USERNAME and RAVELRY_PASSWORD stubs
+  .env                 # GITIGNORED — personal credentials
+  .pre-commit-config.yaml
+  .github/workflows/ci.yml
   src/
     skeinminder/
       __init__.py
-      config.py
+      config.py          # ConfigError, get_ravelry_credentials, RAVELRY_BASE_URL
+      cli.py             # click group + stash command with --fixture flag
       ravelry/
-        client.py
-        models.py
-        normalizer.py
-        fixtures.py
-      graph/
-        state.py
-        nodes.py
-        workflow.py
-      agents/
-        supervisor.py
-        stash.py
-        pattern_scout.py
-        feasibility.py
-        planner.py
-        project_creator.py
-        verifier.py
-      tools/
-        ravelry_project.py
-        calendar.py
-        notion.py
-      cli.py
+        __init__.py
+        exceptions.py    # RavelryError hierarchy + NormalizationError
+        models.py        # raw Pydantic models (RawUser, RawYarn, RawStashItem, etc.)
+        client.py        # RavelryClient (Basic Auth, retries, pagination)
+        normalizer.py    # StashItem, enums, normalize_stash, scoring helpers
+        sanitizer.py     # strip personal data before committing fixtures
+        recorder.py      # one-shot: captures live API responses as fixtures
   tests/
-    fixtures/
-      stash_list_sanitized.json
-      pattern_search_sanitized.json
-    test_ravelry_client.py
+    __init__.py
+    conftest.py          # FixtureTransport + fixture_client / fixture_transport fixtures
+    test_cli.py
+    test_config.py
+    test_models.py
     test_normalizer.py
+    test_ravelry_client.py
+    test_sanitizer.py
     test_scoring.py
-    test_graph_mvp.py
+    test_placeholder.py  # empty, keeps pytest happy before real tests exist
+    fixtures/
+      current_user.json        # sanitized: real id, username="[REDACTED]"
+      stash_list.json          # 10 representative items (trimmed from full stash)
+      stash_detail_sample.json # first 5 items from stash_list
+      stash_list_full.json     # 1,379 items — GITIGNORED, local only
 ```
+
+---
+
+## Open questions
+
+Answered:
+
+- ~~What is the stash list endpoint?~~ `/people/{username}/stash/list.json`
+- ~~Does the stash list return skeins and fiber?~~ No — skeins=null, fiber_categories=[] in list format.
+- ~~Does project creation require write permissions?~~ Yes, "Personal Account Access" app required.
+- ~~Does the paginator use `pages` or `page_count`?~~ `page_count` in the real API.
+
+Still open (need logged-in Ravelry API docs):
+
+1. What is the exact endpoint and payload for project creation?
+2. Can the API link stash items to a project directly?
+3. Can start date, end date, status, and notes be set at creation time?
+4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
+5. Are there documented rate limits?
+6. What fields does the stash detail endpoint add over the list format? (Likely: skeins, fiber_categories, notes, photos.)
+7. What fields are available in pattern search vs. pattern detail?
+8. Can project photos be uploaded via the API?
+
+---
 
 ## Demo guardrails
 
@@ -559,36 +539,25 @@ skeinminder/
 - Add a `requires_approval` flag in graph state.
 - Never log API keys, OAuth tokens, or personal Ravelry data.
 - Use sanitized fixtures for tests and public demos.
-- Do not rely on live Ravelry during the interview unless you have a fallback.
+- Do not rely on live Ravelry during demos unless you have a fallback.
 - Read back any created/updated resource to verify success.
 
-## Open questions
+---
 
-These should be answered from the logged-in Ravelry developer docs or through controlled API tests:
+## Pending housekeeping
 
-1. What is the exact endpoint and payload for project creation?
-2. Can the API link stash items to a project directly?
-3. Can start date, end date, status, and notes be set at creation time?
-4. Are project notes plain text, HTML, Markdown, or Ravelry-specific markup?
-5. Does project creation require OAuth 2.0, Basic Auth with write permissions, or either?
-6. Are there documented rate limits or best-practice limits?
-7. What fields are returned by stash list versus stash detail?
-8. Which fields are available in pattern search versus pattern detail?
-9. Can project photos be uploaded and attached through the API?
-10. Are there API terms that affect demo/public use?
+- **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
+- The `project-init` branch has not been merged to `main` yet. All work is on this branch.
 
-## Interview framing
+---
 
-Strong explanation:
 
-> SkeinMinder uses LLM agents for ambiguous judgment and deterministic tools for side effects. The agents evaluate yarn, pattern, timeline, and project fit. LangGraph manages the state, routing, persistence, and human approval gates. Ravelry and Calendar integrations are wrapped as typed tools with validation, dry-run support, and verification reads.
+---
 
-What this demonstrates:
+## Background: Ravelry API sources
 
-- Legacy-to-modern refactoring judgment.
-- API integration and auth design.
-- State-aware agent orchestration.
-- Safe write workflows.
-- Domain modeling.
-- Testability and demo reliability.
-- Product sensibility around a personally meaningful use case.
+- https://www.ravelry.com/api (requires login for full docs)
+- https://www.ravelry.com/about/goodies
+- Old ravelry_playground repo: https://github.com/ReneeErnst/ravelry_playground
+- `pyravelry` wrapper: https://www.coultontheuer.com/pyravelry/
+- Rust client (reference only): https://github.com/strickvl/ravelry-rs

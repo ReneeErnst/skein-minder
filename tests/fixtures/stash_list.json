@@ -1,0 +1,250 @@
+{
+  "stash": [
+    {
+      "id": 26963723,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Happy Assident",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 191714,
+        "name": "SkeinCANDY ",
+        "yarn_company_name": "A Whimsical Wood Yarn Co.",
+        "yarn_weight": {
+          "id": 5,
+          "name": "Fingering"
+        },
+        "grams": 100.0,
+        "yardage": 437.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Pink"
+    },
+    {
+      "id": 15726808,
+      "permalink": "[REDACTED]",
+      "colorway_name": "",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 151453,
+        "name": "Merino Sport",
+        "yarn_company_name": "Carlton Yarns",
+        "yarn_weight": {
+          "id": 11,
+          "name": "DK"
+        },
+        "grams": 50.0,
+        "yardage": 148.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Gray"
+    },
+    {
+      "id": 17444415,
+      "permalink": "[REDACTED]",
+      "colorway_name": "900 Charcoal",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 3518,
+        "name": "220 Superwash®",
+        "yarn_company_name": "Cascade Yarns ®",
+        "yarn_weight": {
+          "id": 12,
+          "name": "Worsted"
+        },
+        "grams": 100.0,
+        "yardage": 220.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Gray"
+    },
+    {
+      "id": 25243711,
+      "permalink": "[REDACTED]",
+      "colorway_name": "604 Aloe",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 65153,
+        "name": "Organic Cotton (Worsted)",
+        "yarn_company_name": "Blue Sky Fibers",
+        "yarn_weight": {
+          "id": 1,
+          "name": "Aran"
+        },
+        "grams": 100.0,
+        "yardage": 150.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Blue-green"
+    },
+    {
+      "id": 16431698,
+      "permalink": "[REDACTED]",
+      "colorway_name": "1 English Garden",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 114023,
+        "name": "Yumbrel",
+        "yarn_company_name": "Araucania Yarns",
+        "yarn_weight": {
+          "id": 7,
+          "name": "Lace"
+        },
+        "grams": 100.0,
+        "yardage": 990.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Purple"
+    },
+    {
+      "id": 16177963,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Autumn",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 6590,
+        "name": "Socks that Rock Mediumweight",
+        "yarn_company_name": "Blue Moon Fiber Arts",
+        "yarn_weight": {
+          "id": 10,
+          "name": "Sport"
+        },
+        "grams": 170.0,
+        "yardage": 405.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red"
+    },
+    {
+      "id": 16215536,
+      "permalink": "[REDACTED]",
+      "colorway_name": "5940 Night Shade ",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 4039,
+        "name": "Foliage",
+        "yarn_company_name": "Berroco",
+        "yarn_weight": {
+          "id": 4,
+          "name": "Bulky"
+        },
+        "grams": 50.0,
+        "yardage": 100.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Blue-purple"
+    },
+    {
+      "id": 24950020,
+      "permalink": "[REDACTED]",
+      "colorway_name": "900 Whipped Cream",
+      "stash_status": {
+        "id": 2,
+        "name": "All used up"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 7269,
+        "name": "Brushed Suri",
+        "yarn_company_name": "Blue Sky Fibers",
+        "yarn_weight": {
+          "id": 11,
+          "name": "DK"
+        },
+        "grams": 50.0,
+        "yardage": 142.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Natural/Undyed"
+    },
+    {
+      "id": 15987460,
+      "permalink": "[REDACTED]",
+      "colorway_name": "1757 True Red",
+      "stash_status": {
+        "id": 4,
+        "name": "Traded/sold/gifted"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 23782,
+        "name": "Comfort Sock",
+        "yarn_company_name": "Berroco",
+        "yarn_weight": {
+          "id": 5,
+          "name": "Fingering"
+        },
+        "grams": 100.0,
+        "yardage": 447.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red"
+    },
+    {
+      "id": 15952696,
+      "permalink": "[REDACTED]",
+      "colorway_name": "205 Cotton Candy",
+      "stash_status": {
+        "id": 4,
+        "name": "Traded/sold/gifted"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": null,
+      "color_family_name": "Pink"
+    }
+  ],
+  "paginator": {
+    "page": 1,
+    "page_size": 100,
+    "results": 10,
+    "pages": 1,
+    "last_page": 1
+  }
+}
