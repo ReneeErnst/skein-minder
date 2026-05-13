@@ -13,6 +13,8 @@ from skeinminder.ravelry.exceptions import (
 )
 from skeinminder.ravelry.models import (
     RawCurrentUserResponse,
+    RawStashItem,
+    RawStashListResponse,
     RawUser,
 )
 
@@ -87,6 +89,21 @@ class RavelryClient:
     def get_current_user(self) -> RawUser:
         data = self._get("/current_user.json")
         return RawCurrentUserResponse.model_validate(data).user
+
+    def get_stash_list(self, username: str) -> list[RawStashItem]:
+        items: list[RawStashItem] = []
+        page = 1
+        while True:
+            data = self._get(
+                f"/stash/{username}/list.json",
+                params={"page": page, "page_size": 100},
+            )
+            parsed = RawStashListResponse.model_validate(data)
+            items.extend(parsed.stash)
+            if page >= parsed.paginator.pages:
+                break
+            page += 1
+        return items
 
     def close(self) -> None:
         self._client.close()
