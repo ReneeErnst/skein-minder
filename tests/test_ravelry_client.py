@@ -7,6 +7,11 @@ import pytest
 
 from skeinminder.config import ConfigError
 from skeinminder.ravelry.client import RavelryClient
+from skeinminder.ravelry.exceptions import (
+    RavelryAPIError,
+    RavelryAuthError,
+    RavelryRateLimitError,
+)
 from skeinminder.ravelry.models import RawUser
 
 
@@ -138,3 +143,36 @@ def test_get_stash_detail_requests_correct_url() -> None:
     client.get_stash_detail("myuser", 42)
     assert len(captured) == 1
     assert captured[0].url.path == "/stash/myuser/42.json"
+
+
+def _make_status_transport(status: int) -> httpx.BaseTransport:
+    class StatusTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(status, json={"error": "test"})
+
+    return StatusTransport()
+
+
+def test_401_raises_auth_error() -> None:
+    client = RavelryClient(transport=_make_status_transport(401))
+    with pytest.raises(RavelryAuthError):
+        client.get_current_user()
+
+
+def test_403_raises_auth_error() -> None:
+    client = RavelryClient(transport=_make_status_transport(403))
+    with pytest.raises(RavelryAuthError):
+        client.get_current_user()
+
+
+def test_429_raises_rate_limit_error() -> None:
+    client = RavelryClient(transport=_make_status_transport(429))
+    with pytest.raises(RavelryRateLimitError):
+        client.get_current_user()
+
+
+def test_500_raises_api_error() -> None:
+    client = RavelryClient(transport=_make_status_transport(500))
+    with pytest.raises(RavelryAPIError) as exc_info:
+        client.get_current_user()
+    assert exc_info.value.status_code == 500
