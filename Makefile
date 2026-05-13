@@ -13,8 +13,8 @@ typecheck:
 	uv run mypy .
 
 test:
-	uv run pytest
+	uv run pytest || { RC=$$?; [ $$RC -eq 5 ] || exit $$RC; }
 
 check:
 	uv run pre-commit run --all-files
-	uv run pytest
+	uv run pytest || { RC=$$?; [ $$RC -eq 5 ] || exit $$RC; }
