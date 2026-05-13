@@ -6,16 +6,14 @@ _Last updated: 2026-05-12_
 
 **SkeinMinder** — a Ravelry-powered multi-agent studio planner that turns a real yarn stash into feasible, scheduled, human-approved fiber projects.
 
-## Demo thesis
+## Engineering goals
 
-This should be positioned as more than a hobby app. The interview story is:
+SkeinMinder is a production-shaped LangGraph application built on top of the Ravelry API. It reads a real Ravelry stash, uses multiple specialized agents to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint.
 
-> I took an older exploratory Ravelry API/data science project, extracted the useful integration ideas, and rebuilt the concept as a production-shaped LangGraph application. The system reads my real Ravelry stash, uses multiple specialized agents to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint.
-
-The strongest engineering themes to demonstrate are:
+Key engineering themes:
 
 - API integration with a real third-party system.
-- Typed service-layer design around legacy exploratory code.
+- Typed service-layer design.
 - Stateful multi-agent orchestration with LangGraph.
 - Human-in-the-loop approvals before side effects.
 - Deterministic tool execution separated from LLM reasoning.
@@ -458,7 +456,7 @@ Tasks:
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones. Optional: Notion project dashboard, Google Drive project brief.
 
-### Phase 8 — Interview demo polish
+### Phase 8 — Demo polish
 
 Deterministic demo data, fixture mode toggle, sample prompt scripts, screenshots/GIFs, architecture diagram, known-limitations section.
 
@@ -541,7 +539,7 @@ Still open (need logged-in Ravelry API docs):
 - Add a `requires_approval` flag in graph state.
 - Never log API keys, OAuth tokens, or personal Ravelry data.
 - Use sanitized fixtures for tests and public demos.
-- Do not rely on live Ravelry during the interview unless you have a fallback.
+- Do not rely on live Ravelry during demos unless you have a fallback.
 - Read back any created/updated resource to verify success.
 
 ---
@@ -553,21 +551,6 @@ Still open (need logged-in Ravelry API docs):
 
 ---
 
-## Interview framing
-
-Strong explanation:
-
-> SkeinMinder uses LLM agents for ambiguous judgment and deterministic tools for side effects. The agents evaluate yarn, pattern, timeline, and project fit. LangGraph manages the state, routing, persistence, and human approval gates. Ravelry and Calendar integrations are wrapped as typed tools with validation, dry-run support, and verification reads.
-
-What this demonstrates:
-
-- Legacy-to-modern refactoring judgment.
-- API integration and auth design.
-- State-aware agent orchestration.
-- Safe write workflows.
-- Domain modeling.
-- Testability and demo reliability.
-- Product sensibility around a personally meaningful use case.
 
 ---
 
