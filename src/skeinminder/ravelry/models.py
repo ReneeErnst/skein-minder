@@ -39,8 +39,8 @@ class RawYarn(BaseModel):
     name: str
     yarn_company_name: str | None = None
     yarn_weight: RawYarnWeight | None = None
-    grams: int | None = None
-    yardage: int | None = None
+    grams: float | None = None
+    yardage: float | None = None
     fiber_categories: list[RawFiberCategory] = []
 
 

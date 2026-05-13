@@ -6,6 +6,7 @@ from pathlib import Path
 from skeinminder.ravelry.models import (
     RawCurrentUserResponse,
     RawStashDetailResponse,
+    RawStashItem,
     RawStashListResponse,
 )
 
@@ -45,8 +46,6 @@ def test_parse_stash_list_item_null_yarn() -> None:
     # Modify a copy to simulate missing yarn
     item_data = dict(data["stash"][0])
     item_data["yarn"] = None
-    from skeinminder.ravelry.models import RawStashItem
-
     item = RawStashItem.model_validate(item_data)
     assert item.yarn is None
 
