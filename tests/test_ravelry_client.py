@@ -100,3 +100,41 @@ def test_get_stash_list_fetches_all_pages() -> None:
     assert len(items) == 2
     assert items[0].yarn_name == "Yarn Page 1"
     assert items[1].yarn_name == "Yarn Page 2"
+
+
+def test_get_stash_detail_returns_item(fixture_client: RavelryClient) -> None:
+    from skeinminder.ravelry.models import RawStashItem
+
+    item = fixture_client.get_stash_detail("testuser", 10001)
+    assert isinstance(item, RawStashItem)
+    assert item.id == 10001
+    assert item.colorway_name == "Moss"
+
+
+def test_get_stash_detail_requests_correct_url() -> None:
+    captured: list[httpx.Request] = []
+
+    class CapturingTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "stash": {
+                        "id": 42,
+                        "permalink": None,
+                        "colorway_name": None,
+                        "stash_status": None,
+                        "skeins": 1.0,
+                        "notes": None,
+                        "yarn_name": "Test",
+                        "yarn": None,
+                        "color_family_name": None,
+                    }
+                },
+            )
+
+    client = RavelryClient(transport=CapturingTransport())
+    client.get_stash_detail("myuser", 42)
+    assert len(captured) == 1
+    assert captured[0].url.path == "/stash/myuser/42.json"

@@ -13,6 +13,7 @@ from skeinminder.ravelry.exceptions import (
 )
 from skeinminder.ravelry.models import (
     RawCurrentUserResponse,
+    RawStashDetailResponse,
     RawStashItem,
     RawStashListResponse,
     RawUser,
@@ -104,6 +105,10 @@ class RavelryClient:
                 break
             page += 1
         return items
+
+    def get_stash_detail(self, username: str, stash_id: int) -> RawStashItem:
+        data = self._get(f"/stash/{username}/{stash_id}.json")
+        return RawStashDetailResponse.model_validate(data).stash
 
     def close(self) -> None:
         self._client.close()
