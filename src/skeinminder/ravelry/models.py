@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class RawUser(BaseModel):
@@ -69,9 +69,9 @@ class RawPaginator(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     page: int
-    page_size: int
+    page_size: int | None = None
     results: int
-    pages: int
+    pages: int = Field(validation_alias=AliasChoices("pages", "page_count"))
     last_page: int | None = None
 
 

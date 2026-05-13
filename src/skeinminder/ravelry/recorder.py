@@ -39,9 +39,11 @@ def record() -> None:
         _write(FIXTURES_DIR / "current_user.json", sanitized_user)
         print("    → saved (username redacted)")
 
+        ravelry_username = user.username
+
         # stash list
-        print(f"  GET /stash/{username}/list.json (all pages) ...")
-        stash_items = client.get_stash_list(username)
+        print(f"  GET /people/{ravelry_username}/stash/list.json (all pages) ...")
+        stash_items = client.get_stash_list(ravelry_username)
         stash_list_raw = {
             "stash": [item.model_dump() for item in stash_items],
             "paginator": {
@@ -61,7 +63,7 @@ def record() -> None:
         print(f"  GET stash detail for {len(sample_ids)} items ...")
         detail_items = []
         for stash_id in sample_ids:
-            detail = client.get_stash_detail(username, stash_id)
+            detail = client.get_stash_detail(ravelry_username, stash_id)
             detail_items.append(detail.model_dump())
             print(f"    → {stash_id}")
         sanitized_details = sanitize_stash_detail_sample(detail_items)

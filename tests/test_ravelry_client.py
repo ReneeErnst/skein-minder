@@ -29,8 +29,8 @@ def test_client_accepts_transport_without_credentials(
 def test_get_current_user_returns_user(fixture_client: RavelryClient) -> None:
     user = fixture_client.get_current_user()
     assert isinstance(user, RawUser)
-    assert user.username == "testuser"
-    assert user.id == 99999
+    assert isinstance(user.username, str)
+    assert isinstance(user.id, int)
 
 
 def test_client_sends_basic_auth_header() -> None:
@@ -58,10 +58,10 @@ def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
     items = fixture_client.get_stash_list("testuser")
-    assert len(items) == 3
+    assert len(items) == 10
     assert all(isinstance(item, RawStashItem) for item in items)
-    assert items[0].id == 10001
-    assert items[0].colorway_name == "Moss"
+    assert items[0].id == 26963723
+    assert items[0].colorway_name == "Happy Assident"
 
 
 def test_get_stash_list_fetches_all_pages() -> None:
@@ -110,10 +110,10 @@ def test_get_stash_list_fetches_all_pages() -> None:
 def test_get_stash_detail_returns_item(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
-    item = fixture_client.get_stash_detail("testuser", 10001)
+    item = fixture_client.get_stash_detail("testuser", 26963723)
     assert isinstance(item, RawStashItem)
-    assert item.id == 10001
-    assert item.colorway_name == "Moss"
+    assert item.id == 26963723
+    assert item.colorway_name == "Happy Assident"
 
 
 def test_get_stash_detail_requests_correct_url() -> None:
@@ -142,7 +142,7 @@ def test_get_stash_detail_requests_correct_url() -> None:
     client = RavelryClient(transport=CapturingTransport())
     client.get_stash_detail("myuser", 42)
     assert len(captured) == 1
-    assert captured[0].url.path == "/stash/myuser/42.json"
+    assert captured[0].url.path == "/people/myuser/stash/42.json"
 
 
 def _make_status_transport(status: int) -> httpx.BaseTransport:

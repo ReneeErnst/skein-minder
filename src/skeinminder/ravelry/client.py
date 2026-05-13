@@ -79,7 +79,7 @@ class RavelryClient:
         if response.status_code == 429:
             raise RavelryRateLimitError(f"Rate limited on {path}")
         if response.status_code >= 400:
-            raise RavelryAPIError(response.status_code, path)
+            raise RavelryAPIError(response.status_code, path, response.text)
 
         try:
             result: dict[str, object] = response.json()
@@ -96,7 +96,7 @@ class RavelryClient:
         page = 1
         while True:
             data = self._get(
-                f"/stash/{username}/list.json",
+                f"/people/{username}/stash/list.json",
                 params={"page": page, "page_size": 100},
             )
             parsed = RawStashListResponse.model_validate(data)
@@ -107,7 +107,7 @@ class RavelryClient:
         return items
 
     def get_stash_detail(self, username: str, stash_id: int) -> RawStashItem:
-        data = self._get(f"/stash/{username}/{stash_id}.json")
+        data = self._get(f"/people/{username}/stash/{stash_id}.json")
         return RawStashDetailResponse.model_validate(data).stash
 
     def close(self) -> None:

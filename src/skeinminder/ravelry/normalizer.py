@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from enum import Enum
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 # --- Enums ---
 
@@ -88,45 +91,35 @@ from skeinminder.ravelry.models import RawStashItem  # noqa: E402
 
 
 def normalize_stash_item(raw: RawStashItem) -> StashItem:
-    if raw.skeins is None:
-        raise NormalizationError(f"stash item {raw.id} has no skeins value")
-
     yarn = raw.yarn
-    yards_per_skein: float
-    grams_per_skein: float | None = None
-    brand = "Unknown"
-    weight_str: str | None = None
-    fibers: list[str] = []
-
-    if yarn is not None:
-        if yarn.yardage is None:
-            raise NormalizationError(
-                f"stash item {raw.id} has no yardage value (yarn id {yarn.id})"
-            )
-        yards_per_skein = float(yarn.yardage)
-        grams_per_skein = float(yarn.grams) if yarn.grams is not None else None
-        brand = yarn.yarn_company_name or "Unknown"
-        weight_str = yarn.yarn_weight.name if yarn.yarn_weight else None
-        fibers = [fc.name for fc in yarn.fiber_categories]
-    else:
+    if yarn is None:
         raise NormalizationError(
             f"stash item {raw.id} has no yarn data; cannot compute yardage"
         )
+    if yarn.yardage is None:
+        raise NormalizationError(
+            f"stash item {raw.id} has no yardage value (yarn id {yarn.id})"
+        )
 
-    yards_total = raw.skeins * yards_per_skein
-    grams_total = raw.skeins * grams_per_skein if grams_per_skein is not None else None
+    skeins = raw.skeins if raw.skeins is not None else 1.0
+    yards_per_skein = float(yarn.yardage)
+    grams_per_skein = float(yarn.grams) if yarn.grams is not None else None
+    brand = yarn.yarn_company_name or "Unknown"
+    weight_str = yarn.yarn_weight.name if yarn.yarn_weight else None
+    fibers = [fc.name for fc in yarn.fiber_categories]
+
+    yards_total = skeins * yards_per_skein
+    grams_total = skeins * grams_per_skein if grams_per_skein is not None else None
 
     return StashItem(
         stash_id=raw.id,
         brand=brand,
-        yarn_name=raw.yarn_name
-        if raw.yarn_name
-        else (yarn.name if yarn else "Unknown"),
+        yarn_name=raw.yarn_name or (yarn.name or "Unknown"),
         colorway=raw.colorway_name,
         weight_category=weight_category_from_string(weight_str),
         fiber=fibers,
         color_family=raw.color_family_name,
-        skeins=raw.skeins,
+        skeins=skeins,
         yards_per_skein=yards_per_skein,
         yards_total=yards_total,
         grams_total=grams_total,
@@ -136,7 +129,13 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
 
 def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
-    return [normalize_stash_item(item) for item in raw_items]
+    results = []
+    for item in raw_items:
+        try:
+            results.append(normalize_stash_item(item))
+        except NormalizationError:
+            logger.debug("skipping stash item %s: normalization failed", item.id)
+    return results
 
 
 # Weight ordering for adjacency checks (lower index = lighter)

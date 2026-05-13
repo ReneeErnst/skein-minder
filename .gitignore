@@ -221,3 +221,6 @@ __marimo__/
 docs/superpowers/*
 !docs/superpowers/specs/
 !docs/superpowers/plans/
+
+# full stash export (large, personal data — keep locally only)
+tests/fixtures/stash_list_full.json

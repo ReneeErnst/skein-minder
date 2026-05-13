@@ -16,17 +16,18 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def test_parse_current_user() -> None:
     data = json.loads((FIXTURES_DIR / "current_user.json").read_text())
     response = RawCurrentUserResponse.model_validate(data)
-    assert response.user.username == "testuser"
-    assert response.user.id == 99999
+    assert isinstance(response.user.username, str)
+    assert isinstance(response.user.id, int)
 
 
 def test_parse_stash_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     response = RawStashListResponse.model_validate(data)
-    assert len(response.stash) == 3
+    assert len(response.stash) == 10
     assert response.paginator.pages == 1
-    assert response.stash[0].id == 10001
-    assert response.stash[0].colorway_name == "Moss"
+    assert isinstance(response.stash[0].id, int)
+    assert response.stash[0].id == 26963723
+    assert response.stash[0].colorway_name == "Happy Assident"
 
 
 def test_parse_stash_list_item_yarn() -> None:
@@ -34,11 +35,10 @@ def test_parse_stash_list_item_yarn() -> None:
     response = RawStashListResponse.model_validate(data)
     yarn = response.stash[0].yarn
     assert yarn is not None
-    assert yarn.yarn_company_name == "Sample Brand"
+    assert yarn.yarn_company_name == "A Whimsical Wood Yarn Co."
     assert yarn.yarn_weight is not None
-    assert yarn.yarn_weight.name == "Worsted"
-    assert len(yarn.fiber_categories) == 1
-    assert yarn.fiber_categories[0].name == "Wool"
+    assert yarn.yarn_weight.name == "Fingering"
+    assert isinstance(yarn.fiber_categories, list)
 
 
 def test_parse_stash_list_item_null_yarn() -> None:
@@ -53,4 +53,5 @@ def test_parse_stash_list_item_null_yarn() -> None:
 def test_parse_stash_detail_sample() -> None:
     data = json.loads((FIXTURES_DIR / "stash_detail_sample.json").read_text())
     response = RawStashDetailResponse.model_validate({"stash": data[0]})
-    assert response.stash.id == 10001
+    assert isinstance(response.stash.id, int)
+    assert response.stash.id == 26963723
