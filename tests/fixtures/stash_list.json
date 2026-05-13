@@ -1,0 +1,75 @@
+{
+  "stash": [
+    {
+      "id": 10001,
+      "permalink": "testuser-worsted-wool",
+      "colorway_name": "Moss",
+      "stash_status": {"id": 1, "name": "stash"},
+      "skeins": 5.0,
+      "notes": "A placeholder worsted note",
+      "yarn_name": "Worsted Wool",
+      "yarn": {
+        "id": 20001,
+        "name": "Worsted Wool",
+        "yarn_company_name": "Sample Brand",
+        "yarn_weight": {"id": 5, "name": "Worsted"},
+        "grams": 100,
+        "yardage": 218,
+        "fiber_categories": [
+          {"id": 1, "name": "Wool"}
+        ]
+      },
+      "color_family_name": "Greens"
+    },
+    {
+      "id": 10002,
+      "permalink": "testuser-fingering-wool",
+      "colorway_name": "Midnight",
+      "stash_status": {"id": 1, "name": "stash"},
+      "skeins": 2.0,
+      "notes": null,
+      "yarn_name": "Fingering Sock",
+      "yarn": {
+        "id": 20002,
+        "name": "Fingering Sock",
+        "yarn_company_name": "Sample Dyer",
+        "yarn_weight": {"id": 1, "name": "Fingering"},
+        "grams": 100,
+        "yardage": 400,
+        "fiber_categories": [
+          {"id": 1, "name": "Wool"},
+          {"id": 3, "name": "Nylon"}
+        ]
+      },
+      "color_family_name": "Blues"
+    },
+    {
+      "id": 10003,
+      "permalink": "testuser-dk-alpaca",
+      "colorway_name": "Stone",
+      "stash_status": {"id": 1, "name": "stash"},
+      "skeins": 1.0,
+      "notes": null,
+      "yarn_name": "DK Alpaca",
+      "yarn": {
+        "id": 20003,
+        "name": "DK Alpaca",
+        "yarn_company_name": "Luxury Yarns",
+        "yarn_weight": {"id": 4, "name": "DK"},
+        "grams": 50,
+        "yardage": 125,
+        "fiber_categories": [
+          {"id": 4, "name": "Alpaca"}
+        ]
+      },
+      "color_family_name": "Neutrals"
+    }
+  ],
+  "paginator": {
+    "page": 1,
+    "page_size": 100,
+    "results": 3,
+    "pages": 1,
+    "last_page": 1
+  }
+}

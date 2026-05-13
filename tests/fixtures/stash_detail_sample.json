@@ -1,0 +1,23 @@
+[
+  {
+    "id": 10001,
+    "permalink": "testuser-worsted-wool",
+    "colorway_name": "Moss",
+    "stash_status": {"id": 1, "name": "stash"},
+    "skeins": 5.0,
+    "notes": "A placeholder worsted note",
+    "yarn_name": "Worsted Wool",
+    "yarn": {
+      "id": 20001,
+      "name": "Worsted Wool",
+      "yarn_company_name": "Sample Brand",
+      "yarn_weight": {"id": 5, "name": "Worsted"},
+      "grams": 100,
+      "yardage": 218,
+      "fiber_categories": [
+        {"id": 1, "name": "Wool"}
+      ]
+    },
+    "color_family_name": "Greens"
+  }
+]
