@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 def _is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, RavelryRateLimitError):
         return True
-    if isinstance(exc, RavelryAPIError) and exc.status_code >= 500:
+    if isinstance(exc, RavelryAPIError) and (
+        exc.status_code >= 500 or exc.status_code == 0
+    ):
         return True
     return False
 
@@ -76,7 +78,10 @@ class RavelryClient:
         if response.status_code >= 400:
             raise RavelryAPIError(response.status_code, path)
 
-        result: dict[str, object] = response.json()
+        try:
+            result: dict[str, object] = response.json()
+        except Exception as exc:
+            raise RavelryAPIError(response.status_code, path) from exc
         return result
 
     def get_current_user(self) -> RawUser:

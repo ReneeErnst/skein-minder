@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 
 import httpx
@@ -40,5 +41,9 @@ def fixture_transport() -> FixtureTransport:
 
 
 @pytest.fixture
-def fixture_client(fixture_transport: FixtureTransport) -> RavelryClient:
-    return RavelryClient(transport=fixture_transport)
+def fixture_client(
+    fixture_transport: FixtureTransport,
+) -> Generator[RavelryClient, None, None]:
+    client = RavelryClient(transport=fixture_transport)
+    yield client
+    client.close()
