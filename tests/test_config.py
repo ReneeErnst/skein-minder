@@ -27,3 +27,12 @@ def test_get_credentials_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> None:
     username, password = get_ravelry_credentials()
     assert username == "myuser"
     assert password == "mypass"
+
+
+def test_get_credentials_raises_when_username_is_empty_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAVELRY_USERNAME", "")
+    monkeypatch.setenv("RAVELRY_PASSWORD", "secret")
+    with pytest.raises(ConfigError, match="RAVELRY_USERNAME"):
+        get_ravelry_credentials()
