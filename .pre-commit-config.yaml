@@ -16,3 +16,4 @@ repos:
           - tenacity>=8
           - pytest>=8
           - python-dotenv>=1
+          - click>=8
