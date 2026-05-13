@@ -381,6 +381,8 @@ Tasks:
 - Compute stash categories: sweater quantity, accessory quantity, single skein.
 - Implement scoring helpers for yardage buffer and fiber suitability.
 
+Note: Phase 2 scoring helpers accept `pattern_yards` as a parameter but in this phase that value will be estimated or hardcoded for testing. The real payoff comes in Phase 4, when actual yardage requirements from Ravelry pattern data replace estimates. Design the scoring API so that swapping in real pattern yardage requires no interface change.
+
 Exit criteria:
 
 - Given raw stash fixtures, system returns clean structured stash summary.
