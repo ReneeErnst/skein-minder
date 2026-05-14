@@ -224,6 +224,30 @@ LangGraph is a good fit because the project needs state, routing, persistence, a
 
 ## Product concept
 
+### Two entry modes
+
+The system supports two directions of use. Both share the same downstream filtering and recommendation logic — only the starting point differs.
+
+**Project-first (goal-directed):** User specifies a project goal and the agent finds matching stash yarn.
+
+```text
+"I want a fall cardigan, medium difficulty, something I can finish in 6 weeks."
+  -> filter stash by weight, yardage, fiber suitability
+  -> rank candidates
+  -> return recommendations
+```
+
+**Stash-first:** User specifies a stash item or yarn type and the agent finds fitting project archetypes.
+
+```text
+"What can I make with my 900 yards of sport weight silk?"
+"Help me use up this merino worsted."
+  -> locate matching stash items
+  -> recommend project archetypes that fit
+```
+
+The graph state must accommodate both entry points from Phase 3 onward. The input fields `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present.
+
 ### Core workflow
 
 User asks:
@@ -236,7 +260,7 @@ Prioritize stash yarn, medium difficulty, and something I can realistically fini
 System flow:
 
 ```text
-User goal
+User goal / stash filter
   -> Supervisor Agent
   -> Ravelry Stash Agent
   -> Yarn Normalizer
@@ -271,6 +295,14 @@ Next actions:
 - Add generated notes to the project page.
 - Schedule swatching in Google Calendar.
 ```
+
+### Future interface vision
+
+The CLI is the right demo vehicle for a technical portfolio project. The natural end state for a fiber arts audience is a web chat UI: a simple input box where the user types a goal or describes their yarn, and recommendation cards come back with rationale and risks. Most knitters already think in chat terms from Ravelry's community features.
+
+The path from CLI to web is a thin layer once the graph exists: a FastAPI endpoint wraps the graph, a simple React front end handles input and card rendering. The LangGraph backend doesn't change.
+
+Longer-term possibilities worth noting: a Discord or Slack bot that lives in knitting community servers (there are large active knitting Discords where a stash-aware bot would fit naturally), and a Ravelry-embedded panel if Ravelry ever opens extension support. Neither is a current requirement.
 
 ### LLM context window design constraint
 
@@ -384,20 +416,50 @@ Reads back created/updated records and confirms the side effect succeeded.
 
 ## Implementation plan
 
-### Phase 3 — First LangGraph MVP (NEXT)
+### Phase 2b — API Investigation (NEXT, BLOCKS Phase 3)
 
-Goal: build the simplest useful graph.
+Goal: resolve open API questions before building the graph on shaky assumptions.
+
+Blockers that must be answered:
+
+1. **Skeins field mystery.** The live API returns `skeins: null` for all stash items in both list and detail endpoints, but the Ravelry website shows real skein counts. The recorder serializes through Pydantic, so any field not in `RawStashItem` is silently dropped. We do not know whether `skeins` is present under a different field name or requires different auth. This is a critical blocker: without accurate yardage totals, the graph cannot produce trustworthy recommendations.
+
+2. **Weight-adjusted yardage thresholds.** The current `ProjectQuantity` enum uses a flat 800-yard sweater threshold regardless of weight. A bulky sweater needs ~400 yards; a fingering-weight sweater needs ~1,500+. The thresholds must be weight-aware before the graph does any meaningful filtering.
+
+3. **Stash detail field schema.** Need the full field list for `/people/{username}/stash/{id}.json` to know what data is actually available at the detail level vs. the list level.
+
+Tasks:
+
+- Set up a browser-capable MCP server (e.g., Playwright MCP) to access logged-in Ravelry API docs.
+- Add a raw-capture mode to `recorder.py` that saves pre-Pydantic JSON for a sample of stash detail responses. Compare to current Pydantic-serialized output to find dropped fields.
+- Update `RawStashItem` with any fields discovered in the raw response (skeins, fiber_categories in detail format, etc.).
+- Update `ProjectQuantity` thresholds to be weight-aware. Define a lookup: Thread/Cobweb ~2000+yds, Lace ~1500yds, Fingering ~1200yds, Sport ~1000yds, DK ~900yds, Worsted ~800yds, Aran ~650yds, Bulky ~500yds, Super Bulky ~300yds.
+- Update `normalize_stash_item` to use weight-adjusted thresholds.
+- Re-run recorder with fresh credentials to capture updated fixtures.
+- Update tests to reflect corrected normalization behavior.
+
+Exit criteria:
+
+- We know what field carries skein count in the API response and can populate it reliably.
+- `ProjectQuantity` classification is weight-aware and correct for all fixture items.
+- Fixture data reflects accurate yardage totals (skeins × yards_per_skein).
+
+---
+
+### Phase 3 — First LangGraph MVP
+
+Goal: build the simplest useful graph supporting both entry modes (project-first and stash-first).
 
 Workflow:
 
 ```text
-User goal -> Read stash -> Normalize stash -> Filter to available sweater-qty items
-         -> Recommend project archetypes -> Return ranked options
+User goal / stash filter -> Read stash -> Normalize stash -> Filter to relevant items
+                        -> Recommend project archetypes -> Return ranked options
 ```
 
 Tasks:
 
-- Define graph state (TypedDict with stash items, user goal, recommendations, requires_approval flag).
+- Define graph state (TypedDict with stash items, user_goal, stash_filter, recommendations, requires_approval flag). Both user_goal and stash_filter are optional; at least one required.
 - Add Supervisor node.
 - Add Stash node (calls `RavelryClient` or loads fixture).
 - Add Recommendation node (LLM call with filtered stash context).
@@ -532,9 +594,10 @@ Still open (need logged-in Ravelry API docs):
 3. Can start date, end date, status, and notes be set at creation time?
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
-6. What fields does the stash detail endpoint add over the list format? (Likely: skeins, fiber_categories, notes, photos.)
+6. What fields does the stash detail endpoint add over the list format? This is now urgent: `skeins` returns null from both list and detail endpoints in current fixtures, but the Ravelry website shows real skein counts (e.g., 10 skeins for a DK stash entry). The recorder serializes through Pydantic before writing fixtures, so any field not in `RawStashItem` is silently dropped. We need the raw API response (pre-Pydantic) to determine whether `skeins` is returned under a different field name, or whether it requires different auth. The playground README_tech.md notes that some user data required OAuth rather than Basic Auth.
 7. What fields are available in pattern search vs. pattern detail?
 8. Can project photos be uploaded via the API?
+9. Does the stash detail endpoint return `skeins` as a non-null value when the user has entered a skein count on Ravelry? If so, what is the exact field name? (The `stash/list.json` format is documented as a "small" representation — the detail format may differ significantly.)
 
 ---
 
@@ -554,6 +617,7 @@ Still open (need logged-in Ravelry API docs):
 ## Pending housekeeping
 
 - **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
+- **Investigate skeins field before finalizing Phase 3.** Add a raw-capture mode to the recorder (saves pre-Pydantic JSON for a few stash items) to see the full API response shape. This will tell us whether `skeins` is present under a different field name and whether it requires OAuth vs. Personal Account Access.
 - The `project-init` branch has not been merged to `main` yet. All work is on this branch.
 
 ---

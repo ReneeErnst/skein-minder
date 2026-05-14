@@ -23,7 +23,7 @@ def test_parse_current_user() -> None:
 def test_parse_stash_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     response = RawStashListResponse.model_validate(data)
-    assert len(response.stash) == 10
+    assert len(response.stash) == 24
     assert response.paginator.pages == 1
     assert isinstance(response.stash[0].id, int)
     assert response.stash[0].id == 26963723

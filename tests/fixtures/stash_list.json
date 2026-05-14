@@ -63,8 +63,8 @@
       "yarn_name": null,
       "yarn": {
         "id": 3518,
-        "name": "220 Superwash®",
-        "yarn_company_name": "Cascade Yarns ®",
+        "name": "220 Superwash\u00ae",
+        "yarn_company_name": "Cascade Yarns \u00ae",
         "yarn_weight": {
           "id": 12,
           "name": "Worsted"
@@ -238,12 +238,362 @@
       "yarn_name": null,
       "yarn": null,
       "color_family_name": "Pink"
+    },
+    {
+      "id": 29725989,
+      "permalink": "[REDACTED]",
+      "colorway_name": " 1152 Vert Fonce (Forest)",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 187327,
+        "name": "8/4 Unmercerised Cotton",
+        "yarn_company_name": "Maurice Brassard et Fils Inc.",
+        "yarn_weight": {
+          "id": 5,
+          "name": "Fingering"
+        },
+        "grams": 227.0,
+        "yardage": 840.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Green"
+    },
+    {
+      "id": 16431728,
+      "permalink": "[REDACTED]",
+      "colorway_name": "6 Seascape",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 114023,
+        "name": "Yumbrel",
+        "yarn_company_name": "Araucania Yarns",
+        "yarn_weight": {
+          "id": 7,
+          "name": "Lace"
+        },
+        "grams": 100.0,
+        "yardage": 990.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Blue"
+    },
+    {
+      "id": 22702197,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Dark Andromeda",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 110466,
+        "name": "Katahdin",
+        "yarn_company_name": "Miss Babs",
+        "yarn_weight": {
+          "id": 13,
+          "name": "Light Fingering"
+        },
+        "grams": 400.0,
+        "yardage": 1750.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red"
+    },
+    {
+      "id": 29728024,
+      "permalink": "[REDACTED]",
+      "colorway_name": "White",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 66891,
+        "name": "Cotton Tale 8",
+        "yarn_company_name": "Pisgah Yarn & Dyeing Co.",
+        "yarn_weight": {
+          "id": 10,
+          "name": "Sport"
+        },
+        "grams": 454.0,
+        "yardage": 1860.0,
+        "fiber_categories": []
+      },
+      "color_family_name": null
+    },
+    {
+      "id": 28280305,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Green Tea",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 167776,
+        "name": "JST 2/40 Linen",
+        "yarn_company_name": "Jane Stafford Textiles",
+        "yarn_weight": {
+          "id": 9,
+          "name": "Thread"
+        },
+        "grams": 100.0,
+        "yardage": 1320.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Green"
+    },
+    {
+      "id": 29207369,
+      "permalink": "[REDACTED]",
+      "colorway_name": "5156 Burgundy ",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 181321,
+        "name": "16/2 Bamboo",
+        "yarn_company_name": "Maurice Brassard et Fils Inc.",
+        "yarn_weight": {
+          "id": 8,
+          "name": "Cobweb"
+        },
+        "grams": 227.0,
+        "yardage": 1680.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red-purple"
+    },
+    {
+      "id": 29207291,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Bleached",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 181322,
+        "name": "Linen 4/12",
+        "yarn_company_name": "Maurice Brassard et Fils Inc.",
+        "yarn_weight": {
+          "id": 11,
+          "name": "DK"
+        },
+        "grams": 227.0,
+        "yardage": 450.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "White"
+    },
+    {
+      "id": 23424009,
+      "permalink": "[REDACTED]",
+      "colorway_name": "45 Chircas",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 73918,
+        "name": "Rastita",
+        "yarn_company_name": "Malabrigo Yarn",
+        "yarn_weight": {
+          "id": 11,
+          "name": "DK"
+        },
+        "grams": 100.0,
+        "yardage": 309.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Green"
+    },
+    {
+      "id": 19127139,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Artigas Gem",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 136429,
+        "name": "Superwash Merino Worsted Twist",
+        "yarn_company_name": "Cloudborn Fibers",
+        "yarn_weight": {
+          "id": 12,
+          "name": "Worsted"
+        },
+        "grams": 100.0,
+        "yardage": 221.0,
+        "fiber_categories": []
+      },
+      "color_family_name": null
+    },
+    {
+      "id": 29069165,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Black ",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 126676,
+        "name": "16/8 Mop Cotton",
+        "yarn_company_name": "Maurice Brassard et Fils Inc.",
+        "yarn_weight": {
+          "id": 1,
+          "name": "Aran"
+        },
+        "grams": 454.0,
+        "yardage": 420.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Black"
+    },
+    {
+      "id": 20667953,
+      "permalink": "[REDACTED]",
+      "colorway_name": "8019 Antique",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 2833,
+        "name": "Ecological Wool\u00ae",
+        "yarn_company_name": "Cascade Yarns \u00ae",
+        "yarn_weight": {
+          "id": 4,
+          "name": "Bulky"
+        },
+        "grams": 250.0,
+        "yardage": 478.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Gray"
+    },
+    {
+      "id": 16183919,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Halloween ",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 173839,
+        "name": "Mitten Yarn Kits",
+        "yarn_company_name": "Knitterly Things",
+        "yarn_weight": {
+          "id": 10,
+          "name": "Sport"
+        },
+        "grams": 200.0,
+        "yardage": 590.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Multicolored"
+    },
+    {
+      "id": 20810447,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Aurora Heather",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 121208,
+        "name": "Wool of the Andes Superwash Bulky",
+        "yarn_company_name": "Knit Picks",
+        "yarn_weight": {
+          "id": 4,
+          "name": "Bulky"
+        },
+        "grams": 100.0,
+        "yardage": 137.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Green"
+    },
+    {
+      "id": 28080210,
+      "permalink": "[REDACTED]",
+      "colorway_name": "247 Whales Road",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 144691,
+        "name": "Caracol",
+        "yarn_company_name": "Malabrigo Yarn",
+        "yarn_weight": {
+          "id": 6,
+          "name": "Super Bulky"
+        },
+        "grams": 150.0,
+        "yardage": 90.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Blue"
     }
   ],
   "paginator": {
     "page": 1,
     "page_size": 100,
-    "results": 10,
+    "results": 24,
     "pages": 1,
     "last_page": 1
   }

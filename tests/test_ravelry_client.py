@@ -58,7 +58,7 @@ def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
     items = fixture_client.get_stash_list("testuser")
-    assert len(items) == 10
+    assert len(items) == 24
     assert all(isinstance(item, RawStashItem) for item in items)
     assert items[0].id == 26963723
     assert items[0].colorway_name == "Happy Assident"
