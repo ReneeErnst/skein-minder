@@ -412,6 +412,13 @@ Notes for next session:
 - Stash filtering before the LLM node is critical — see context window constraint above.
 - The `--fixture` CLI flag pattern is already established in `cli.py`; extend it to the graph.
 
+Cost controls to build in from the start:
+
+- **Never call real LLM in tests.** Mock at the LangGraph node level — same discipline as `FixtureTransport` for the Ravelry client. Unchecked test runs are the main way API costs accumulate.
+- **Configurable model.** Accept a `SKEINMINDER_MODEL` env var so Haiku can be used during development and Sonnet for real demos.
+- **Fixture mode for LLM nodes.** In `--fixture` mode, LLM nodes return canned responses instead of calling the API. Extend the existing CLI flag pattern into the graph layer.
+- **Prompt caching.** The system prompt and normalized stash summary are stable across a session. Use Claude's prompt caching to reduce input token costs by ~90% on repeated queries.
+
 Exit criteria:
 
 - User can ask "What can I make from my stash?"
