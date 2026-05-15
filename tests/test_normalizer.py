@@ -60,56 +60,57 @@ def _make_raw_item(
     )
 
 
-def test_weight_category_worsted() -> None:
-    assert weight_category_from_string("Worsted") == WeightCategory.WORSTED
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("Worsted", WeightCategory.WORSTED),
+        ("Fingering", WeightCategory.FINGERING),
+        ("DK", WeightCategory.DK),
+        ("Lace", WeightCategory.LACE),
+        ("thread", WeightCategory.THREAD),
+        ("cobweb", WeightCategory.COBWEB),
+        ("light fingering", WeightCategory.LIGHT_FINGERING),
+        ("CrazyUnknown", WeightCategory.UNKNOWN),
+        (None, WeightCategory.UNKNOWN),
+    ],
+)
+def test_weight_category_from_string(
+    value: str | None, expected: WeightCategory
+) -> None:
+    assert weight_category_from_string(value) == expected
 
 
-def test_weight_category_fingering() -> None:
-    assert weight_category_from_string("Fingering") == WeightCategory.FINGERING
+def test_weight_order_lightest_to_heaviest() -> None:
+    thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
+    cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
+    lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
+    lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
+    fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
+    assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
 
 
-def test_weight_category_dk() -> None:
-    assert weight_category_from_string("DK") == WeightCategory.DK
-
-
-def test_weight_category_lace() -> None:
-    assert weight_category_from_string("Lace") == WeightCategory.LACE
-
-
-def test_weight_category_unknown_string() -> None:
-    assert weight_category_from_string("CrazyUnknown") == WeightCategory.UNKNOWN
-
-
-def test_weight_category_none() -> None:
-    assert weight_category_from_string(None) == WeightCategory.UNKNOWN
-
-
-def test_project_quantity_scrap() -> None:
-    assert (
-        project_quantity_from_yards(150.0, WeightCategory.WORSTED)
-        == ProjectQuantity.SCRAP
-    )
-
-
-def test_project_quantity_accessory_lower_bound() -> None:
-    assert (
-        project_quantity_from_yards(200.0, WeightCategory.WORSTED)
-        == ProjectQuantity.ACCESSORY
-    )
-
-
-def test_project_quantity_accessory_upper_bound() -> None:
-    assert (
-        project_quantity_from_yards(799.0, WeightCategory.WORSTED)
-        == ProjectQuantity.ACCESSORY
-    )
-
-
-def test_project_quantity_sweater_worsted() -> None:
-    assert (
-        project_quantity_from_yards(800.0, WeightCategory.WORSTED)
-        == ProjectQuantity.SWEATER
-    )
+@pytest.mark.parametrize(
+    "yards,weight,expected",
+    [
+        (150.0, WeightCategory.WORSTED, ProjectQuantity.SCRAP),
+        (200.0, WeightCategory.WORSTED, ProjectQuantity.ACCESSORY),
+        (799.0, WeightCategory.WORSTED, ProjectQuantity.ACCESSORY),
+        (800.0, WeightCategory.WORSTED, ProjectQuantity.SWEATER),
+        (600.0, WeightCategory.BULKY, ProjectQuantity.SWEATER),  # bulky threshold 500
+        (
+            800.0,
+            WeightCategory.FINGERING,
+            ProjectQuantity.ACCESSORY,
+        ),  # fingering threshold 1200
+        (1600.0, WeightCategory.LACE, ProjectQuantity.SWEATER),  # lace threshold 1500
+        (800.0, WeightCategory.UNKNOWN, ProjectQuantity.SWEATER),
+        (799.0, WeightCategory.UNKNOWN, ProjectQuantity.ACCESSORY),
+    ],
+)
+def test_project_quantity_from_yards(
+    yards: float, weight: WeightCategory, expected: ProjectQuantity
+) -> None:
+    assert project_quantity_from_yards(yards, weight) == expected
 
 
 def test_stash_item_construction() -> None:
@@ -200,64 +201,6 @@ def test_normalize_stash_returns_list() -> None:
     items = normalize_stash(raw_list.stash)
     assert len(items) == 33  # 36 fixture items, 3 have no yarn and are skipped
     assert all(isinstance(i, StashItem) for i in items)
-
-
-def test_weight_category_thread() -> None:
-    assert weight_category_from_string("thread") == WeightCategory.THREAD
-
-
-def test_weight_category_cobweb() -> None:
-    assert weight_category_from_string("cobweb") == WeightCategory.COBWEB
-
-
-def test_weight_category_light_fingering() -> None:
-    assert (
-        weight_category_from_string("light fingering") == WeightCategory.LIGHT_FINGERING
-    )
-
-
-def test_weight_order_new_categories_positioned() -> None:
-    thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
-    cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
-    lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
-    lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
-    fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
-    assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
-
-
-def test_project_quantity_bulky_sweater_at_600_yards() -> None:
-    # Bulky threshold is 500 yards; 600 yards qualifies as sweater quantity
-    assert (
-        project_quantity_from_yards(600.0, WeightCategory.BULKY)
-        == ProjectQuantity.SWEATER
-    )
-
-
-def test_project_quantity_fingering_accessory_at_800_yards() -> None:
-    # Fingering threshold is 1200 yards; 800 yards is only accessory quantity
-    assert (
-        project_quantity_from_yards(800.0, WeightCategory.FINGERING)
-        == ProjectQuantity.ACCESSORY
-    )
-
-
-def test_project_quantity_lace_sweater_at_1600_yards() -> None:
-    # Lace threshold is 1500 yards; 1600 yards qualifies
-    assert (
-        project_quantity_from_yards(1600.0, WeightCategory.LACE)
-        == ProjectQuantity.SWEATER
-    )
-
-
-def test_project_quantity_unknown_falls_back_to_800_threshold() -> None:
-    assert (
-        project_quantity_from_yards(800.0, WeightCategory.UNKNOWN)
-        == ProjectQuantity.SWEATER
-    )
-    assert (
-        project_quantity_from_yards(799.0, WeightCategory.UNKNOWN)
-        == ProjectQuantity.ACCESSORY
-    )
 
 
 def test_normalize_stash_item_reads_skeins_from_primary_pack() -> None:

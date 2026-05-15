@@ -153,26 +153,18 @@ def _make_status_transport(status: int) -> httpx.BaseTransport:
     return StatusTransport()
 
 
-def test_401_raises_auth_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(401))
-    with pytest.raises(RavelryAuthError):
+@pytest.mark.parametrize(
+    "status_code,exc_class",
+    [
+        (401, RavelryAuthError),
+        (403, RavelryAuthError),
+        (429, RavelryRateLimitError),
+        (500, RavelryAPIError),
+    ],
+)
+def test_http_error_raises(status_code: int, exc_class: type[Exception]) -> None:
+    client = RavelryClient(transport=_make_status_transport(status_code))
+    with pytest.raises(exc_class) as exc_info:
         client.get_current_user()
-
-
-def test_403_raises_auth_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(403))
-    with pytest.raises(RavelryAuthError):
-        client.get_current_user()
-
-
-def test_429_raises_rate_limit_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(429))
-    with pytest.raises(RavelryRateLimitError):
-        client.get_current_user()
-
-
-def test_500_raises_api_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(500))
-    with pytest.raises(RavelryAPIError) as exc_info:
-        client.get_current_user()
-    assert exc_info.value.status_code == 500
+    if isinstance(exc_info.value, RavelryAPIError):
+        assert exc_info.value.status_code == status_code
