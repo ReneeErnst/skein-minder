@@ -184,3 +184,28 @@ def test_normalize_stash_returns_list() -> None:
     items = normalize_stash(raw_list.stash)
     assert len(items) == 23  # 24 fixture items, 1 has no yarn and is skipped
     assert all(isinstance(i, StashItem) for i in items)
+
+
+def test_weight_category_thread() -> None:
+    assert weight_category_from_string("thread") == WeightCategory.THREAD
+
+
+def test_weight_category_cobweb() -> None:
+    assert weight_category_from_string("cobweb") == WeightCategory.COBWEB
+
+
+def test_weight_category_light_fingering() -> None:
+    assert (
+        weight_category_from_string("light fingering") == WeightCategory.LIGHT_FINGERING
+    )
+
+
+def test_weight_order_new_categories_positioned() -> None:
+    from skeinminder.ravelry.normalizer import _WEIGHT_ORDER
+
+    thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
+    cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
+    lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
+    lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
+    fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
+    assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx

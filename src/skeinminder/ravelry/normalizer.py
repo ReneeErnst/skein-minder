@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class WeightCategory(str, Enum):
+    THREAD = "thread"
+    COBWEB = "cobweb"
     LACE = "lace"
+    LIGHT_FINGERING = "light_fingering"
     FINGERING = "fingering"
     SPORT = "sport"
     DK = "dk"
@@ -23,7 +26,10 @@ class WeightCategory(str, Enum):
 
 
 _WEIGHT_MAP: dict[str, WeightCategory] = {
+    "thread": WeightCategory.THREAD,
+    "cobweb": WeightCategory.COBWEB,
     "lace": WeightCategory.LACE,
+    "light fingering": WeightCategory.LIGHT_FINGERING,
     "fingering": WeightCategory.FINGERING,
     "sock": WeightCategory.FINGERING,
     "sport": WeightCategory.SPORT,
@@ -140,7 +146,10 @@ def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
 
 # Weight ordering for adjacency checks (lower index = lighter)
 _WEIGHT_ORDER: list[WeightCategory] = [
+    WeightCategory.THREAD,
+    WeightCategory.COBWEB,
     WeightCategory.LACE,
+    WeightCategory.LIGHT_FINGERING,
     WeightCategory.FINGERING,
     WeightCategory.SPORT,
     WeightCategory.DK,
