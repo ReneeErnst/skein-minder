@@ -24,21 +24,20 @@ def test_parse_current_user() -> None:
 def test_parse_stash_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     response = RawStashListResponse.model_validate(data)
-    assert len(response.stash) == 1379
+    assert len(response.stash) == 36
     assert response.paginator.pages == 1
     assert isinstance(response.stash[0].id, int)
-    assert response.stash[0].id == 15952696
-    assert response.stash[0].colorway_name == "205 Cotton Candy"
+    assert response.stash[0].id == 15878461
+    assert response.stash[0].colorway_name == "7888 Iris"
 
 
 def test_parse_stash_list_item_yarn() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     response = RawStashListResponse.model_validate(data)
-    # item 26963723 has yarn data; stash[0] has no yarn in the updated fixture
-    item = next(i for i in response.stash if i.id == 26963723)
+    item = next(i for i in response.stash if i.id == 16182972)
     yarn = item.yarn
     assert yarn is not None
-    assert yarn.yarn_company_name == "A Whimsical Wood Yarn Co."
+    assert yarn.yarn_company_name == "Fleece Artist"
     assert yarn.yarn_weight is not None
     assert yarn.yarn_weight.name == "Fingering"
     assert isinstance(yarn.fiber_categories, list)

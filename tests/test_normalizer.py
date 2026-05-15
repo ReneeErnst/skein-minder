@@ -198,7 +198,7 @@ def test_normalize_stash_returns_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     raw_list = RawStashListResponse.model_validate(data)
     items = normalize_stash(raw_list.stash)
-    assert len(items) == 1313  # 1379 fixture items, 66 have no yarn and are skipped
+    assert len(items) == 33  # 36 fixture items, 3 have no yarn and are skipped
     assert all(isinstance(i, StashItem) for i in items)
 
 
