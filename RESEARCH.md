@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-12_
+_Last updated: 2026-05-14_
 
 ## Working project name
 
@@ -204,6 +204,38 @@ The real API returns `page_count` (not `pages`). `RawPaginator.pages` uses `Alia
 - Returns empty `fiber_categories=[]` for all items — fiber data is not in the list format.
 - `yarn_name` is null for all items; use `yarn.name` as fallback.
 - Items without a linked yarn (`yarn=null`) cannot be normalized for yardage.
+
+**Stash detail endpoint (raw capture, 2026-05-14):**
+
+The raw capture (pre-Pydantic) revealed the following about the detail format vs. list format:
+
+- **Skein count lives in `packs`, not in the stash item directly.** The detail endpoint returns a `packs` array (dropped by `RawStashItem` because it was not in the model). Each pack has a `skeins` field (float|null). The primary pack (`primary_pack_id: null`) is the authoritative record. To get skein count, sum `skeins` across primary packs, or use the primary pack's `skeins` value directly.
+- **The packs structure always has two entries per stash item**: a "primary" pack (`primary_pack_id: null`) and a secondary pack whose `primary_pack_id` points to the first. The secondary appears to be a UI-layer duplicate — only the primary pack should be used for quantity calculations.
+- **`quantity_description` on the primary pack** gives a human-readable summary (e.g., `"1 skeins = 438.0 yards (400.5m)"`), confirming the `skeins` field is the right source of truth.
+- **`skeins` can still be null in the detail format** — confirmed for stash items where the user has not entered a skein count on Ravelry (pack 126820577 in the sample returned `skeins: null`).
+- **`fiber_categories` is NOT present in the detail format** — the field simply does not appear in the raw stash detail response. Fiber data must be fetched separately from the yarn endpoint.
+- **`long_yarn_weight_name`, `personal_yarn_weight`, `yarn_weight_name`** are present in the detail format but not the list format. These are currently dropped by `RawStashItem`.
+- **`photos`** (full array) is present in detail format vs. `first_photo` (single object) in list format. Both currently dropped.
+- **`user` and `user_id`** are present in detail format. Currently dropped. Not needed for normalization.
+- **`notes` and `notes_html`** are present in detail format. `notes` is already in `RawStashItem`; `notes_html` is dropped.
+
+**Fields dropped by `RawStashItem` that are relevant for normalization:**
+
+- `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
+- `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
+- `long_yarn_weight_name` (detail only) — human-readable weight label
+
+## API discrepancies (to report to Ravelry)
+
+_Discrepancies between official API documentation and observed behavior. Candidate items for a Ravelry API bug report._
+
+- **`skeins` field on stash item**: The Ravelry API documentation describes `skeins` as a top-level field on a stash item. In observed behavior, `skeins` is null on all stash items in both the list and detail endpoints. The actual skein count is nested inside the `packs` array on the detail endpoint (`packs[n].skeins`), not at the stash-item level. The list endpoint does not return `packs` at all.
+  Observed on: `/people/{username}/stash/list.json` and `/people/{username}/stash/{id}.json`. Reproducible: yes.
+
+- **`fiber_categories` field on stash item**: The list endpoint returns `fiber_categories: []` (empty array) for all items even when yarn has known fiber content. The detail endpoint does not return `fiber_categories` at all (field absent). Fiber data must be fetched via a separate yarn detail request.
+  Observed on: `/people/{username}/stash/list.json` and `/people/{username}/stash/{id}.json`. Reproducible: yes.
+
+---
 
 **Real stash scale:**
 
@@ -586,6 +618,8 @@ Answered:
 - ~~Does the stash list return skeins and fiber?~~ No — skeins=null, fiber_categories=[] in list format.
 - ~~Does project creation require write permissions?~~ Yes, "Personal Account Access" app required.
 - ~~Does the paginator use `pages` or `page_count`?~~ `page_count` in the real API.
+- ~~What fields does the stash detail endpoint add over the list format?~~ Answered by raw capture (2026-05-14): detail adds `packs` (carries actual skein and yardage data), `photos`, `notes_html`, `yarn_weight_name`, `long_yarn_weight_name`, `personal_yarn_weight`, `user`, `user_id`. `fiber_categories` is absent in both formats. See "Critical Ravelry API discoveries" above for full breakdown. (Was question 6.)
+- ~~Does the stash detail endpoint return `skeins` as a non-null value?~~ Yes, but not as a top-level field. Skein count is in `packs[n].skeins` on the primary pack (the one with `primary_pack_id: null`). It can still be null if the user has not entered a count on Ravelry. (Was question 9.)
 
 Still open (need logged-in Ravelry API docs):
 
@@ -594,10 +628,8 @@ Still open (need logged-in Ravelry API docs):
 3. Can start date, end date, status, and notes be set at creation time?
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
-6. What fields does the stash detail endpoint add over the list format? This is now urgent: `skeins` returns null from both list and detail endpoints in current fixtures, but the Ravelry website shows real skein counts (e.g., 10 skeins for a DK stash entry). The recorder serializes through Pydantic before writing fixtures, so any field not in `RawStashItem` is silently dropped. We need the raw API response (pre-Pydantic) to determine whether `skeins` is returned under a different field name, or whether it requires different auth. The playground README_tech.md notes that some user data required OAuth rather than Basic Auth.
-7. What fields are available in pattern search vs. pattern detail?
-8. Can project photos be uploaded via the API?
-9. Does the stash detail endpoint return `skeins` as a non-null value when the user has entered a skein count on Ravelry? If so, what is the exact field name? (The `stash/list.json` format is documented as a "small" representation — the detail format may differ significantly.)
+6. What fields are available in pattern search vs. pattern detail?
+7. Can project photos be uploaded via the API?
 
 ---
 
@@ -617,7 +649,7 @@ Still open (need logged-in Ravelry API docs):
 ## Pending housekeeping
 
 - **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
-- **Investigate skeins field before finalizing Phase 3.** Add a raw-capture mode to the recorder (saves pre-Pydantic JSON for a few stash items) to see the full API response shape. This will tell us whether `skeins` is present under a different field name and whether it requires OAuth vs. Personal Account Access.
+- ~~**Investigate skeins field before finalizing Phase 3.**~~ Done (2026-05-14). Raw capture confirmed: skein count is in `packs[n].skeins` on the detail endpoint, not a top-level stash field. `RawStashItem` and `normalize_stash_item` need to be updated to parse packs. See "Critical Ravelry API discoveries" and "API discrepancies" sections.
 - The `project-init` branch has not been merged to `main` yet. All work is on this branch.
 
 ---
