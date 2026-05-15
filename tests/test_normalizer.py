@@ -8,6 +8,7 @@ import pytest
 from skeinminder.ravelry.exceptions import NormalizationError
 from skeinminder.ravelry.models import (
     RawFiberCategory,
+    RawPack,
     RawStashItem,
     RawStashListResponse,
     RawYarn,
@@ -197,7 +198,7 @@ def test_normalize_stash_returns_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     raw_list = RawStashListResponse.model_validate(data)
     items = normalize_stash(raw_list.stash)
-    assert len(items) == 23  # 24 fixture items, 1 has no yarn and is skipped
+    assert len(items) == 1313  # 1379 fixture items, 66 have no yarn and are skipped
     assert all(isinstance(i, StashItem) for i in items)
 
 
@@ -257,3 +258,33 @@ def test_project_quantity_unknown_falls_back_to_800_threshold() -> None:
         project_quantity_from_yards(799.0, WeightCategory.UNKNOWN)
         == ProjectQuantity.ACCESSORY
     )
+
+
+def test_normalize_stash_item_reads_skeins_from_primary_pack() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    raw_with_packs = raw.model_copy(
+        update={
+            "packs": [
+                RawPack(id=1, primary_pack_id=None, skeins=4.0),  # primary
+                RawPack(id=2, primary_pack_id=1, skeins=4.0),  # secondary — ignored
+            ]
+        }
+    )
+    item = normalize_stash_item(raw_with_packs)
+    assert item.skeins == 4.0
+    assert item.yards_total == pytest.approx(4.0 * 200.0)
+
+
+def test_normalize_stash_item_falls_back_to_default_when_pack_skeins_null() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    raw_with_packs = raw.model_copy(
+        update={"packs": [RawPack(id=1, primary_pack_id=None, skeins=None)]}
+    )
+    item = normalize_stash_item(raw_with_packs)
+    assert item.skeins == 1.0
+
+
+def test_normalize_stash_item_falls_back_to_default_when_no_packs() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    item = normalize_stash_item(raw)
+    assert item.skeins == 1.0

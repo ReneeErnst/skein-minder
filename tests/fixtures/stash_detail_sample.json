@@ -1,127 +1,72 @@
 [
   {
-    "id": 26963723,
+    "id": 15952696,
     "permalink": "[REDACTED]",
-    "colorway_name": "Happy Assident",
+    "colorway_name": "205 Cotton Candy",
     "stash_status": {
-      "id": 1,
-      "name": "In stash"
+      "id": 4,
+      "name": "Traded/sold/gifted"
     },
     "skeins": null,
-    "notes": null,
+    "notes": "[REDACTED]",
     "yarn_name": null,
-    "yarn": {
-      "id": 191714,
-      "name": "SkeinCANDY ",
-      "yarn_company_name": "A Whimsical Wood Yarn Co.",
-      "yarn_weight": {
-        "id": 5,
-        "name": "Fingering"
-      },
-      "grams": 100.0,
-      "yardage": 437.0,
-      "fiber_categories": []
-    },
+    "yarn": null,
     "color_family_name": "Pink"
   },
   {
-    "id": 15726808,
+    "id": 29856409,
     "permalink": "[REDACTED]",
-    "colorway_name": "",
+    "colorway_name": "Hemlock",
     "stash_status": {
       "id": 1,
       "name": "In stash"
     },
     "skeins": null,
-    "notes": null,
+    "notes": "[REDACTED]",
     "yarn_name": null,
-    "yarn": {
-      "id": 151453,
-      "name": "Merino Sport",
-      "yarn_company_name": "Carlton Yarns",
-      "yarn_weight": {
-        "id": 11,
-        "name": "DK"
-      },
-      "grams": 50.0,
-      "yardage": 148.0,
-      "fiber_categories": []
-    },
-    "color_family_name": "Gray"
+    "yarn": null,
+    "color_family_name": "Green"
   },
   {
-    "id": 17444415,
+    "id": 29856449,
     "permalink": "[REDACTED]",
-    "colorway_name": "900 Charcoal",
+    "colorway_name": "Red",
     "stash_status": {
       "id": 1,
       "name": "In stash"
     },
     "skeins": null,
-    "notes": null,
+    "notes": "[REDACTED]",
     "yarn_name": null,
-    "yarn": {
-      "id": 3518,
-      "name": "220 Superwash®",
-      "yarn_company_name": "Cascade Yarns ®",
-      "yarn_weight": {
-        "id": 12,
-        "name": "Worsted"
-      },
-      "grams": 100.0,
-      "yardage": 220.0,
-      "fiber_categories": []
-    },
-    "color_family_name": "Gray"
+    "yarn": null,
+    "color_family_name": "Red"
   },
   {
-    "id": 25243711,
+    "id": 28315066,
     "permalink": "[REDACTED]",
-    "colorway_name": "604 Aloe",
+    "colorway_name": "Charcoal Black",
     "stash_status": {
       "id": 1,
       "name": "In stash"
     },
     "skeins": null,
-    "notes": null,
+    "notes": "[REDACTED]",
     "yarn_name": null,
-    "yarn": {
-      "id": 65153,
-      "name": "Organic Cotton (Worsted)",
-      "yarn_company_name": "Blue Sky Fibers",
-      "yarn_weight": {
-        "id": 1,
-        "name": "Aran"
-      },
-      "grams": 100.0,
-      "yardage": 150.0,
-      "fiber_categories": []
-    },
-    "color_family_name": "Blue-green"
+    "yarn": null,
+    "color_family_name": "Black"
   },
   {
-    "id": 16431698,
+    "id": 28315078,
     "permalink": "[REDACTED]",
-    "colorway_name": "1 English Garden",
+    "colorway_name": "Dark Cranberry",
     "stash_status": {
       "id": 1,
       "name": "In stash"
     },
     "skeins": null,
-    "notes": null,
+    "notes": "[REDACTED]",
     "yarn_name": null,
-    "yarn": {
-      "id": 114023,
-      "name": "Yumbrel",
-      "yarn_company_name": "Araucania Yarns",
-      "yarn_weight": {
-        "id": 7,
-        "name": "Lace"
-      },
-      "grams": 100.0,
-      "yardage": 990.0,
-      "fiber_categories": []
-    },
-    "color_family_name": "Purple"
+    "yarn": null,
+    "color_family_name": "Red"
   }
 ]

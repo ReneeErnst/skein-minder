@@ -51,6 +51,18 @@ class RawStashStatus(BaseModel):
     name: str
 
 
+class RawPack(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    primary_pack_id: int | None = None
+    skeins: float | None = None
+    total_yards: float | None = None
+    total_grams: float | None = None
+    yards_per_skein: float | None = None
+    grams_per_skein: float | None = None
+
+
 class RawStashItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -58,11 +70,12 @@ class RawStashItem(BaseModel):
     permalink: str | None = None
     colorway_name: str | None = None
     stash_status: RawStashStatus | None = None
-    skeins: float | None = None
+    skeins: float | None = None  # always null from API; real data is in packs
     notes: str | None = None
     yarn_name: str | None = None
     yarn: RawYarn | None = None
     color_family_name: str | None = None
+    packs: list[RawPack] = []
 
 
 class RawPaginator(BaseModel):

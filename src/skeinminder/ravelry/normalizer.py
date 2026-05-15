@@ -109,7 +109,18 @@ class StashItem(BaseModel):
 
 
 from skeinminder.ravelry.exceptions import NormalizationError  # noqa: E402
-from skeinminder.ravelry.models import RawStashItem  # noqa: E402
+from skeinminder.ravelry.models import RawPack, RawStashItem  # noqa: E402
+
+
+def _primary_pack_skeins(packs: list[RawPack]) -> float | None:
+    """Return skeins from the primary pack (primary_pack_id is None).
+
+    Returns None if no primary pack is found or its skeins field is null.
+    """
+    for pack in packs:
+        if pack.primary_pack_id is None:
+            return pack.skeins
+    return None
 
 
 def normalize_stash_item(raw: RawStashItem) -> StashItem:
@@ -123,7 +134,12 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
             f"stash item {raw.id} has no yardage value (yarn id {yarn.id})"
         )
 
-    skeins = raw.skeins if raw.skeins is not None else 1.0
+    pack_skeins = _primary_pack_skeins(raw.packs)
+    skeins = (
+        pack_skeins
+        if pack_skeins is not None
+        else (raw.skeins if raw.skeins is not None else 1.0)
+    )
     yards_per_skein = float(yarn.yardage)
     grams_per_skein = float(yarn.grams) if yarn.grams is not None else None
     brand = yarn.yarn_company_name or "Unknown"

@@ -58,10 +58,10 @@ def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
     items = fixture_client.get_stash_list("testuser")
-    assert len(items) == 24
+    assert len(items) == 1379
     assert all(isinstance(item, RawStashItem) for item in items)
-    assert items[0].id == 26963723
-    assert items[0].colorway_name == "Happy Assident"
+    assert items[0].id == 15952696
+    assert items[0].colorway_name == "205 Cotton Candy"
 
 
 def test_get_stash_list_fetches_all_pages() -> None:
@@ -110,10 +110,10 @@ def test_get_stash_list_fetches_all_pages() -> None:
 def test_get_stash_detail_returns_item(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
-    item = fixture_client.get_stash_detail("testuser", 26963723)
+    item = fixture_client.get_stash_detail("testuser", 15952696)
     assert isinstance(item, RawStashItem)
-    assert item.id == 26963723
-    assert item.colorway_name == "Happy Assident"
+    assert item.id == 15952696
+    assert item.colorway_name == "205 Cotton Candy"
 
 
 def test_get_stash_detail_requests_correct_url() -> None:
