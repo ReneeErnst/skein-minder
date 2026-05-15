@@ -24,7 +24,8 @@ uv run pytest tests/test_foo.py::name  # run a single test
 skeinminder stash            # print normalized stash (requires .env credentials)
 skeinminder stash --fixture  # same, using committed fixture files (no network)
 
-uv run python -m skeinminder.ravelry.recorder  # record fresh fixtures from live API
+uv run python -m skeinminder.ravelry.recorder        # record fresh fixtures from live API
+uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to tests/fixtures/raw/ (gitignored)
 ```
 
 ## Stack
@@ -35,7 +36,7 @@ uv run python -m skeinminder.ravelry.recorder  # record fresh fixtures from live
 - httpx for Ravelry API client, with tenacity retry on 429/5xx
 - pytest, ruff (E/F/I rules, line-length 88), mypy strict
 
-## What's built (Phase 1)
+## What's built (Phases 1–2b)
 
 ```
 src/skeinminder/
