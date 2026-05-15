@@ -266,7 +266,9 @@ def test_normalize_stash_item_reads_skeins_from_primary_pack() -> None:
         update={
             "packs": [
                 RawPack(id=1, primary_pack_id=None, skeins=4.0),  # primary
-                RawPack(id=2, primary_pack_id=1, skeins=4.0),  # secondary — ignored
+                RawPack(
+                    id=2, primary_pack_id=1, skeins=99.0
+                ),  # secondary — must be ignored
             ]
         }
     )
