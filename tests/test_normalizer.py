@@ -14,6 +14,7 @@ from skeinminder.ravelry.models import (
     RawYarnWeight,
 )
 from skeinminder.ravelry.normalizer import (
+    _WEIGHT_ORDER,
     ProjectQuantity,
     StashItem,
     WeightCategory,
@@ -83,19 +84,31 @@ def test_weight_category_none() -> None:
 
 
 def test_project_quantity_scrap() -> None:
-    assert project_quantity_from_yards(150.0) == ProjectQuantity.SCRAP
+    assert (
+        project_quantity_from_yards(150.0, WeightCategory.WORSTED)
+        == ProjectQuantity.SCRAP
+    )
 
 
 def test_project_quantity_accessory_lower_bound() -> None:
-    assert project_quantity_from_yards(200.0) == ProjectQuantity.ACCESSORY
+    assert (
+        project_quantity_from_yards(200.0, WeightCategory.WORSTED)
+        == ProjectQuantity.ACCESSORY
+    )
 
 
 def test_project_quantity_accessory_upper_bound() -> None:
-    assert project_quantity_from_yards(799.0) == ProjectQuantity.ACCESSORY
+    assert (
+        project_quantity_from_yards(799.0, WeightCategory.WORSTED)
+        == ProjectQuantity.ACCESSORY
+    )
 
 
-def test_project_quantity_sweater() -> None:
-    assert project_quantity_from_yards(800.0) == ProjectQuantity.SWEATER
+def test_project_quantity_sweater_worsted() -> None:
+    assert (
+        project_quantity_from_yards(800.0, WeightCategory.WORSTED)
+        == ProjectQuantity.SWEATER
+    )
 
 
 def test_stash_item_construction() -> None:
@@ -136,7 +149,9 @@ def test_normalize_stash_item_fingering() -> None:
     item = normalize_stash_item(raw)
     assert item.weight_category == WeightCategory.FINGERING
     assert item.yards_total == pytest.approx(2.0 * 400.0)
-    assert item.project_quantity == ProjectQuantity.SWEATER
+    assert (
+        item.project_quantity == ProjectQuantity.ACCESSORY
+    )  # 800 yds < 1200 fingering threshold
     assert "Nylon" in item.fiber
 
 
@@ -201,11 +216,44 @@ def test_weight_category_light_fingering() -> None:
 
 
 def test_weight_order_new_categories_positioned() -> None:
-    from skeinminder.ravelry.normalizer import _WEIGHT_ORDER
-
     thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
     cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
     lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
     lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
     fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
     assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
+
+
+def test_project_quantity_bulky_sweater_at_600_yards() -> None:
+    # Bulky threshold is 500 yards; 600 yards qualifies as sweater quantity
+    assert (
+        project_quantity_from_yards(600.0, WeightCategory.BULKY)
+        == ProjectQuantity.SWEATER
+    )
+
+
+def test_project_quantity_fingering_accessory_at_800_yards() -> None:
+    # Fingering threshold is 1200 yards; 800 yards is only accessory quantity
+    assert (
+        project_quantity_from_yards(800.0, WeightCategory.FINGERING)
+        == ProjectQuantity.ACCESSORY
+    )
+
+
+def test_project_quantity_lace_sweater_at_1600_yards() -> None:
+    # Lace threshold is 1500 yards; 1600 yards qualifies
+    assert (
+        project_quantity_from_yards(1600.0, WeightCategory.LACE)
+        == ProjectQuantity.SWEATER
+    )
+
+
+def test_project_quantity_unknown_falls_back_to_800_threshold() -> None:
+    assert (
+        project_quantity_from_yards(800.0, WeightCategory.UNKNOWN)
+        == ProjectQuantity.SWEATER
+    )
+    assert (
+        project_quantity_from_yards(799.0, WeightCategory.UNKNOWN)
+        == ProjectQuantity.ACCESSORY
+    )
