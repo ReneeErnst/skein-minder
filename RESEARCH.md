@@ -67,9 +67,9 @@ tests/
   conftest.py                # FixtureTransport, fixture_client, fixture_transport fixtures
   fixtures/
     current_user.json        # sanitized: id=7036752, username="[REDACTED]"
-    stash_list.json          # 10 representative items (trimmed from 1,379)
-    stash_detail_sample.json # first 5 items from stash_list, same shape
-    stash_list_full.json     # all 1,379 items — GITIGNORED, local only
+    stash_list.json          # 1,379 items (full sanitized stash — refreshed 2026-05-14)
+    stash_detail_sample.json # sample of detail-format items (refreshed 2026-05-14)
+    stash_list_full.json     # 1,379 items — GITIGNORED, legacy local copy
 ```
 
 **Raw Pydantic models** (`models.py`, all use `extra="ignore"`):
@@ -78,7 +78,8 @@ tests/
 - `RawYarnWeight` — id, name
 - `RawYarn` — id, name, yarn_company_name, yarn_weight, grams (float|None), yardage (float|None), fiber_categories
 - `RawStashStatus` — id, name
-- `RawStashItem` — id, permalink, colorway_name, stash_status, skeins (float|None), notes, yarn_name, yarn, color_family_name
+- `RawPack` — id, primary_pack_id (int|None), skeins (float|None), total_yards, total_grams, yards_per_skein, grams_per_skein
+- `RawStashItem` — id, permalink, colorway_name, stash_status, skeins (float|None — always null from API), notes, yarn_name, yarn, color_family_name, packs (list[RawPack])
 - `RawPaginator` — page, page_size (optional), results, pages (alias: page_count), last_page
 - `RawStashListResponse` — stash (list), paginator
 - `RawStashDetailResponse` — stash (single item)
@@ -131,19 +132,19 @@ tests/
 
 ```python
 class WeightCategory(str, Enum):
-    LACE / COBWEB / THREAD / LIGHT_FINGERING / FINGERING /
+    # lightest to heaviest
+    THREAD / COBWEB / LACE / LIGHT_FINGERING / FINGERING /
     SPORT / DK / WORSTED / ARAN / BULKY / SUPER_BULKY / UNKNOWN
 
 class ProjectQuantity(str, Enum):
-    SWEATER    # 800+ yards
-    ACCESSORY  # 200–799 yards
+    SWEATER    # weight-adjusted threshold (see _SWEATER_YARDS_BY_WEIGHT)
+    ACCESSORY  # 200 yards up to SWEATER threshold
     SCRAP      # < 200 yards
 
 class MatchScore(str, Enum):
-    EXACT / ADJACENT / INCOMPATIBLE / UNKNOWN
+    EXACT / ADJACENT / MISMATCH
 
-@dataclass
-class StashItem:
+class StashItem(BaseModel):  # Pydantic BaseModel, not dataclass
     stash_id: int
     brand: str
     yarn_name: str
@@ -159,13 +160,26 @@ class StashItem:
     project_quantity: ProjectQuantity
 ```
 
+SWEATER thresholds by weight: Thread/Cobweb 2000 yds, Lace 1500, Light Fingering 1100, Fingering 1200, Sport 1000, DK 900, Worsted 800, Aran 650, Bulky 500, Super Bulky 300, Unknown 800.
+
 **Key normalizer behaviors:**
 
-- `normalize_stash_item(raw)`: raises `NormalizationError` if yarn is None or yarn.yardage is None. If `skeins` is None (common in the list endpoint response), defaults to 1.0.
+- `normalize_stash_item(raw)`: raises `NormalizationError` if yarn is None or yarn.yardage is None. Skeins resolution order: primary pack skeins → raw.skeins → default 1.0.
 - `normalize_stash(raw_items)`: calls normalize_stash_item for each item; silently skips items that raise NormalizationError (logs at DEBUG). Returns only items that could be fully normalized.
-- `yardage_buffer(stash_yards, pattern_yards) -> float`: ratio of extra yardage. E.g., 0.15 means 15% buffer.
-- `weight_match(stash_weight, pattern_weight) -> MatchScore`: EXACT, ADJACENT (one step away in weight order), or INCOMPATIBLE.
-- `fiber_suitability(fiber_list, garment_type) -> MatchScore`: based on known fiber/garment rules.
+- `yardage_buffer(item, pattern_yards) -> float`: percent overage (positive) or deficit (negative).
+- `weight_match(item, pattern_weight) -> MatchScore`: EXACT, ADJACENT (one step in `_WEIGHT_ORDER`), or MISMATCH.
+- `fiber_suitability(item, garment_type) -> MatchScore`: based on known fiber/garment rules in `_FIBER_RULES`.
+
+### Phase 2b — API investigation ✅ COMPLETE
+
+All three blockers resolved. See "Critical Ravelry API discoveries" for full findings.
+
+- **Skeins mystery solved.** Skein count lives in `packs[n].skeins` on the detail endpoint (primary pack only — `primary_pack_id: null`). Top-level `skeins` is always null. `RawPack` model added; `_primary_pack_skeins()` reads it.
+- **Weight-adjusted thresholds implemented.** `ProjectQuantity` classification now uses `_SWEATER_YARDS_BY_WEIGHT` per-weight lookup. THREAD, COBWEB, and LIGHT_FINGERING weight categories added.
+- **Stash detail schema documented.** Raw pre-Pydantic capture confirmed `fiber_categories` is absent from both list and detail formats; fiber requires a separate yarn detail request.
+- **Playwright MCP configured** in `.mcp.json` for future API doc exploration. Not currently loading in Claude Code sessions.
+
+73 tests passing, CI clean. Branch: `phase2b` (not yet merged to main).
 
 ### Phases 3–8 — NOT YET STARTED
 
@@ -239,12 +253,7 @@ _Discrepancies between official API documentation and observed behavior. Candida
 
 **Real stash scale:**
 
-The demo user has 1,379 stash items. This is much larger than average and useful for stress-testing the agent design. The committed fixture is trimmed to 10 items (one per weight category, varied statuses). The full 1,379-item file is at `tests/fixtures/stash_list_full.json` (gitignored, local only).
-
-Fixture item breakdown:
-- 9 items successfully normalize (have linked yarn with yardage)
-- 1 item has no yarn link and is silently skipped by `normalize_stash`
-- Sweater-quantity items (800+ yds): currently 1 (Lace/990 yds). More will be needed for a compelling agent demo — pull from `stash_list_full.json` when building Phase 3.
+The demo user has 1,379 stash items. This is much larger than average and useful for stress-testing the agent design. The full stash is now committed in `stash_list.json` (sanitized). Of the 1,379 items, 1,313 normalize successfully; 66 have no linked yarn and are silently skipped. The weight-adjusted thresholds apply across all 1,313 normalized items.
 
 ---
 
@@ -448,33 +457,18 @@ Reads back created/updated records and confirms the side effect succeeded.
 
 ## Implementation plan
 
-### Phase 2b — API Investigation (NEXT, BLOCKS Phase 3)
+### Phase 2b — API Investigation ✅ COMPLETE (2026-05-14)
 
-Goal: resolve open API questions before building the graph on shaky assumptions.
+All exit criteria met. Branch: `phase2b`.
 
-Blockers that must be answered:
+- **Skeins field:** `packs[n].skeins` on primary pack (detail endpoint only). `RawPack` model added; `_primary_pack_skeins()` helper implemented. `normalize_stash_item` reads packs first, falls back to `raw.skeins`, then defaults to 1.0.
+- **Weight-adjusted thresholds:** `_SWEATER_YARDS_BY_WEIGHT` lookup implemented. THREAD, COBWEB, LIGHT_FINGERING weight categories added. `project_quantity_from_yards(yards, weight)` now takes weight as second argument.
+- **Stash detail schema:** Documented via raw capture. Fiber requires separate yarn detail request (not implemented — out of scope).
+- **Raw capture mode:** `recorder.py --raw` saves pre-Pydantic JSON to `tests/fixtures/raw/` (gitignored).
+- **Playwright MCP:** Configured in `.mcp.json`; API docs exploration deferred (not blocking Phase 3).
+- **Fixtures refreshed** with full 1,379-item stash. 73 tests passing.
 
-1. **Skeins field mystery.** The live API returns `skeins: null` for all stash items in both list and detail endpoints, but the Ravelry website shows real skein counts. The recorder serializes through Pydantic, so any field not in `RawStashItem` is silently dropped. We do not know whether `skeins` is present under a different field name or requires different auth. This is a critical blocker: without accurate yardage totals, the graph cannot produce trustworthy recommendations.
-
-2. **Weight-adjusted yardage thresholds.** The current `ProjectQuantity` enum uses a flat 800-yard sweater threshold regardless of weight. A bulky sweater needs ~400 yards; a fingering-weight sweater needs ~1,500+. The thresholds must be weight-aware before the graph does any meaningful filtering.
-
-3. **Stash detail field schema.** Need the full field list for `/people/{username}/stash/{id}.json` to know what data is actually available at the detail level vs. the list level.
-
-Tasks:
-
-- Set up a browser-capable MCP server (e.g., Playwright MCP) to access logged-in Ravelry API docs.
-- Add a raw-capture mode to `recorder.py` that saves pre-Pydantic JSON for a sample of stash detail responses. Compare to current Pydantic-serialized output to find dropped fields.
-- Update `RawStashItem` with any fields discovered in the raw response (skeins, fiber_categories in detail format, etc.).
-- Update `ProjectQuantity` thresholds to be weight-aware. Define a lookup: Thread/Cobweb ~2000+yds, Lace ~1500yds, Fingering ~1200yds, Sport ~1000yds, DK ~900yds, Worsted ~800yds, Aran ~650yds, Bulky ~500yds, Super Bulky ~300yds.
-- Update `normalize_stash_item` to use weight-adjusted thresholds.
-- Re-run recorder with fresh credentials to capture updated fixtures.
-- Update tests to reflect corrected normalization behavior.
-
-Exit criteria:
-
-- We know what field carries skein count in the API response and can populate it reliably.
-- `ProjectQuantity` classification is weight-aware and correct for all fixture items.
-- Fixture data reflects accurate yardage totals (skeins × yards_per_skein).
+**Potential future improvement (not implemented):** Weight-adjusted thresholds are currently hand-tuned constants. A more accurate approach would sample real Ravelry patterns by weight category and size to derive empirical thresholds. This would also allow `project_quantity_from_yards` to accept size as a parameter (e.g., XS vs. XXL sweaters have meaningfully different yardage requirements). See open question 6 in the Open Questions section.
 
 ---
 
@@ -585,11 +579,11 @@ skein-minder/
       ravelry/
         __init__.py
         exceptions.py    # RavelryError hierarchy + NormalizationError
-        models.py        # raw Pydantic models (RawUser, RawYarn, RawStashItem, etc.)
+        models.py        # raw Pydantic models (RawUser, RawYarn, RawPack, RawStashItem, etc.)
         client.py        # RavelryClient (Basic Auth, retries, pagination)
         normalizer.py    # StashItem, enums, normalize_stash, scoring helpers
         sanitizer.py     # strip personal data before committing fixtures
-        recorder.py      # one-shot: captures live API responses as fixtures
+        recorder.py      # one-shot: captures live API responses as fixtures; --raw for pre-Pydantic capture
   tests/
     __init__.py
     conftest.py          # FixtureTransport + fixture_client / fixture_transport fixtures
@@ -649,8 +643,7 @@ Still open (need logged-in Ravelry API docs):
 ## Pending housekeeping
 
 - **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
-- ~~**Investigate skeins field before finalizing Phase 3.**~~ Done (2026-05-14). Raw capture confirmed: skein count is in `packs[n].skeins` on the detail endpoint, not a top-level stash field. `RawStashItem` and `normalize_stash_item` need to be updated to parse packs. See "Critical Ravelry API discoveries" and "API discrepancies" sections.
-- The `project-init` branch has not been merged to `main` yet. All work is on this branch.
+- **Merge `phase2b` to `main`.** PR pending. 73 tests passing, CI clean.
 
 ---
 
