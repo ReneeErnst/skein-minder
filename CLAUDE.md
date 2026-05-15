@@ -69,6 +69,10 @@ The `graph/`, `agents/`, and `tools/` packages are planned for later phases.
 - No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in graph state, when that layer exists).
 - Every future write tool needs a dry-run mode.
 
+## Git workflow
+
+- Never commit directly to `main`. All work goes on a feature branch (e.g., `phase3`) and merges via PR.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`: pre-commit (ruff + mypy) in one job, pytest in another. Both use Python 3.13 and `uv`.
