@@ -56,6 +56,12 @@ tests/
 
 The `graph/`, `agents/`, and `tools/` packages are planned for later phases.
 
+## Testing conventions
+
+- Use `@pytest.mark.parametrize` whenever multiple tests call the same function with different inputs and assert the same shape of result. Collapse them into one parametrized test rather than writing individual named functions.
+- Keep tests as named functions when the setup or assertion structure differs meaningfully between cases — parametrize is for input variation, not behavioral variation.
+- Fixture files in `tests/fixtures/` should be small and representative (one or a few items per category), not exhaustive dumps. Full exports belong in gitignored files.
+
 ## Key design rules
 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
