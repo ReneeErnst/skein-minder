@@ -58,10 +58,10 @@ def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
     items = fixture_client.get_stash_list("testuser")
-    assert len(items) == 10
+    assert len(items) == 36
     assert all(isinstance(item, RawStashItem) for item in items)
-    assert items[0].id == 26963723
-    assert items[0].colorway_name == "Happy Assident"
+    assert items[0].id == 15878461
+    assert items[0].colorway_name == "7888 Iris"
 
 
 def test_get_stash_list_fetches_all_pages() -> None:
@@ -110,10 +110,10 @@ def test_get_stash_list_fetches_all_pages() -> None:
 def test_get_stash_detail_returns_item(fixture_client: RavelryClient) -> None:
     from skeinminder.ravelry.models import RawStashItem
 
-    item = fixture_client.get_stash_detail("testuser", 26963723)
+    item = fixture_client.get_stash_detail("testuser", 15952696)
     assert isinstance(item, RawStashItem)
-    assert item.id == 26963723
-    assert item.colorway_name == "Happy Assident"
+    assert item.id == 15952696
+    assert item.colorway_name == "205 Cotton Candy"
 
 
 def test_get_stash_detail_requests_correct_url() -> None:
@@ -153,26 +153,18 @@ def _make_status_transport(status: int) -> httpx.BaseTransport:
     return StatusTransport()
 
 
-def test_401_raises_auth_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(401))
-    with pytest.raises(RavelryAuthError):
+@pytest.mark.parametrize(
+    "status_code,exc_class",
+    [
+        (401, RavelryAuthError),
+        (403, RavelryAuthError),
+        (429, RavelryRateLimitError),
+        (500, RavelryAPIError),
+    ],
+)
+def test_http_error_raises(status_code: int, exc_class: type[Exception]) -> None:
+    client = RavelryClient(transport=_make_status_transport(status_code))
+    with pytest.raises(exc_class) as exc_info:
         client.get_current_user()
-
-
-def test_403_raises_auth_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(403))
-    with pytest.raises(RavelryAuthError):
-        client.get_current_user()
-
-
-def test_429_raises_rate_limit_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(429))
-    with pytest.raises(RavelryRateLimitError):
-        client.get_current_user()
-
-
-def test_500_raises_api_error() -> None:
-    client = RavelryClient(transport=_make_status_transport(500))
-    with pytest.raises(RavelryAPIError) as exc_info:
-        client.get_current_user()
-    assert exc_info.value.status_code == 500
+    if isinstance(exc_info.value, RavelryAPIError):
+        assert exc_info.value.status_code == status_code

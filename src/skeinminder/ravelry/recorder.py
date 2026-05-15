@@ -3,17 +3,24 @@
 Run with:
     uv run python -m skeinminder.ravelry.recorder
 
+Add --raw to also save pre-Pydantic JSON for field inspection:
+    uv run python -m skeinminder.ravelry.recorder --raw
+
 Requires RAVELRY_USERNAME and RAVELRY_PASSWORD in .env.
 Writes sanitized JSON to tests/fixtures/ and prints a summary.
+Raw output (--raw) goes to tests/fixtures/raw/ (gitignored — personal data).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from skeinminder.config import get_ravelry_credentials
 from skeinminder.ravelry.client import RavelryClient
+from skeinminder.ravelry.models import RawStashItem
 from skeinminder.ravelry.sanitizer import (
     sanitize_current_user,
     sanitize_stash_detail_sample,
@@ -21,10 +28,11 @@ from skeinminder.ravelry.sanitizer import (
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent.parent.parent / "tests" / "fixtures"
+RAW_DIR = FIXTURES_DIR / "raw"
 SAMPLE_SIZE = 5
 
 
-def record() -> None:
+def record(raw: bool = False) -> None:
     username, password = get_ravelry_credentials()
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -70,9 +78,58 @@ def record() -> None:
         _write(FIXTURES_DIR / "stash_detail_sample.json", sanitized_details)
         print(f"    → saved {len(sanitized_details)} detail records")
 
+        if raw:
+            _record_raw(client, ravelry_username)
+
     print("\nDone. Review the files in tests/fixtures/ before committing.")
     print("Check that no personal data remains, then: git add tests/fixtures/")
     print("and: git commit")
+
+
+def _record_raw(client: RavelryClient, username: str) -> None:
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    model_fields = set(RawStashItem.model_fields.keys())
+
+    print("\n=== RAW CAPTURE ===")
+    print(f"Saving pre-Pydantic JSON to {RAW_DIR}")
+    print("These files are gitignored — they contain personal data.\n")
+
+    # List format: first page only (we need field shapes, not all data)
+    raw_list_resp = client._get(
+        f"/people/{username}/stash/list.json",
+        params={"page": 1, "page_size": 10},
+    )
+    _write(RAW_DIR / "stash_list_raw.json", raw_list_resp)
+    list_items_raw = raw_list_resp.get("stash", [])
+    if (
+        isinstance(list_items_raw, list)
+        and list_items_raw
+        and isinstance(list_items_raw[0], dict)
+    ):
+        list_fields = set(list_items_raw[0].keys())
+        print(f"List format fields:  {sorted(list_fields)}")
+        print(f"  Dropped by model:  {sorted(list_fields - model_fields)}\n")
+
+    # Detail format: sample items
+    list_items: list[Any] = list_items_raw if isinstance(list_items_raw, list) else []
+    sample_ids = [
+        item["id"]
+        for item in list_items[:SAMPLE_SIZE]
+        if isinstance(item, dict) and "id" in item
+    ]
+    raw_details: list[Any] = []
+    for stash_id in sample_ids:
+        raw_detail = client._get(f"/people/{username}/stash/{stash_id}.json")
+        raw_details.append(raw_detail)
+        print(f"  → raw detail {stash_id}")
+    _write(RAW_DIR / "stash_detail_raw.json", raw_details)
+
+    if raw_details:
+        detail_stash = raw_details[0].get("stash", {})
+        if isinstance(detail_stash, dict):
+            detail_fields = set(detail_stash.keys())
+            print(f"\nDetail format fields: {sorted(detail_fields)}")
+            print(f"  Dropped by model:   {sorted(detail_fields - model_fields)}")
 
 
 def _write(path: Path, data: object) -> None:
@@ -80,4 +137,11 @@ def _write(path: Path, data: object) -> None:
 
 
 if __name__ == "__main__":
-    record()
+    parser = argparse.ArgumentParser(description="Record Ravelry API fixtures.")
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Also save pre-Pydantic JSON to tests/fixtures/raw/ for field inspection",
+    )
+    args = parser.parse_args()
+    record(raw=args.raw)

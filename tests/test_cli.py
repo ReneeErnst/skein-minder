@@ -21,7 +21,7 @@ def test_stash_fixture_flag_shows_yarn_names() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["stash", "--fixture"])
     assert result.exit_code == 0
-    assert "Merino Sport" in result.output or "SkeinCANDY" in result.output
+    assert "Millefiori" in result.output or "Sea Wool" in result.output
 
 
 def test_stash_no_flag_fails_without_credentials(

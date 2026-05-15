@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-12_
+_Last updated: 2026-05-14_
 
 ## Working project name
 
@@ -67,9 +67,9 @@ tests/
   conftest.py                # FixtureTransport, fixture_client, fixture_transport fixtures
   fixtures/
     current_user.json        # sanitized: id=7036752, username="[REDACTED]"
-    stash_list.json          # 10 representative items (trimmed from 1,379)
-    stash_detail_sample.json # first 5 items from stash_list, same shape
-    stash_list_full.json     # all 1,379 items — GITIGNORED, local only
+    stash_list.json          # 1,379 items (full sanitized stash — refreshed 2026-05-14)
+    stash_detail_sample.json # sample of detail-format items (refreshed 2026-05-14)
+    stash_list_full.json     # 1,379 items — GITIGNORED, legacy local copy
 ```
 
 **Raw Pydantic models** (`models.py`, all use `extra="ignore"`):
@@ -78,7 +78,8 @@ tests/
 - `RawYarnWeight` — id, name
 - `RawYarn` — id, name, yarn_company_name, yarn_weight, grams (float|None), yardage (float|None), fiber_categories
 - `RawStashStatus` — id, name
-- `RawStashItem` — id, permalink, colorway_name, stash_status, skeins (float|None), notes, yarn_name, yarn, color_family_name
+- `RawPack` — id, primary_pack_id (int|None), skeins (float|None), total_yards, total_grams, yards_per_skein, grams_per_skein
+- `RawStashItem` — id, permalink, colorway_name, stash_status, skeins (float|None — always null from API), notes, yarn_name, yarn, color_family_name, packs (list[RawPack])
 - `RawPaginator` — page, page_size (optional), results, pages (alias: page_count), last_page
 - `RawStashListResponse` — stash (list), paginator
 - `RawStashDetailResponse` — stash (single item)
@@ -131,19 +132,19 @@ tests/
 
 ```python
 class WeightCategory(str, Enum):
-    LACE / COBWEB / THREAD / LIGHT_FINGERING / FINGERING /
+    # lightest to heaviest
+    THREAD / COBWEB / LACE / LIGHT_FINGERING / FINGERING /
     SPORT / DK / WORSTED / ARAN / BULKY / SUPER_BULKY / UNKNOWN
 
 class ProjectQuantity(str, Enum):
-    SWEATER    # 800+ yards
-    ACCESSORY  # 200–799 yards
+    SWEATER    # weight-adjusted threshold (see _SWEATER_YARDS_BY_WEIGHT)
+    ACCESSORY  # 200 yards up to SWEATER threshold
     SCRAP      # < 200 yards
 
 class MatchScore(str, Enum):
-    EXACT / ADJACENT / INCOMPATIBLE / UNKNOWN
+    EXACT / ADJACENT / MISMATCH
 
-@dataclass
-class StashItem:
+class StashItem(BaseModel):  # Pydantic BaseModel, not dataclass
     stash_id: int
     brand: str
     yarn_name: str
@@ -159,13 +160,26 @@ class StashItem:
     project_quantity: ProjectQuantity
 ```
 
+SWEATER thresholds by weight: Thread/Cobweb 2000 yds, Lace 1500, Light Fingering 1100, Fingering 1200, Sport 1000, DK 900, Worsted 800, Aran 650, Bulky 500, Super Bulky 300, Unknown 800.
+
 **Key normalizer behaviors:**
 
-- `normalize_stash_item(raw)`: raises `NormalizationError` if yarn is None or yarn.yardage is None. If `skeins` is None (common in the list endpoint response), defaults to 1.0.
+- `normalize_stash_item(raw)`: raises `NormalizationError` if yarn is None or yarn.yardage is None. Skeins resolution order: primary pack skeins → raw.skeins → default 1.0.
 - `normalize_stash(raw_items)`: calls normalize_stash_item for each item; silently skips items that raise NormalizationError (logs at DEBUG). Returns only items that could be fully normalized.
-- `yardage_buffer(stash_yards, pattern_yards) -> float`: ratio of extra yardage. E.g., 0.15 means 15% buffer.
-- `weight_match(stash_weight, pattern_weight) -> MatchScore`: EXACT, ADJACENT (one step away in weight order), or INCOMPATIBLE.
-- `fiber_suitability(fiber_list, garment_type) -> MatchScore`: based on known fiber/garment rules.
+- `yardage_buffer(item, pattern_yards) -> float`: percent overage (positive) or deficit (negative).
+- `weight_match(item, pattern_weight) -> MatchScore`: EXACT, ADJACENT (one step in `_WEIGHT_ORDER`), or MISMATCH.
+- `fiber_suitability(item, garment_type) -> MatchScore`: based on known fiber/garment rules in `_FIBER_RULES`.
+
+### Phase 2b — API investigation ✅ COMPLETE
+
+All three blockers resolved. See "Critical Ravelry API discoveries" for full findings.
+
+- **Skeins mystery solved.** Skein count lives in `packs[n].skeins` on the detail endpoint (primary pack only — `primary_pack_id: null`). Top-level `skeins` is always null. `RawPack` model added; `_primary_pack_skeins()` reads it.
+- **Weight-adjusted thresholds implemented.** `ProjectQuantity` classification now uses `_SWEATER_YARDS_BY_WEIGHT` per-weight lookup. THREAD, COBWEB, and LIGHT_FINGERING weight categories added.
+- **Stash detail schema documented.** Raw pre-Pydantic capture confirmed `fiber_categories` is absent from both list and detail formats; fiber requires a separate yarn detail request.
+- **Playwright MCP configured** in `.mcp.json` for future API doc exploration. Not currently loading in Claude Code sessions.
+
+73 tests passing, CI clean. Branch: `phase2b` (not yet merged to main).
 
 ### Phases 3–8 — NOT YET STARTED
 
@@ -205,14 +219,41 @@ The real API returns `page_count` (not `pages`). `RawPaginator.pages` uses `Alia
 - `yarn_name` is null for all items; use `yarn.name` as fallback.
 - Items without a linked yarn (`yarn=null`) cannot be normalized for yardage.
 
+**Stash detail endpoint (raw capture, 2026-05-14):**
+
+The raw capture (pre-Pydantic) revealed the following about the detail format vs. list format:
+
+- **Skein count lives in `packs`, not in the stash item directly.** The detail endpoint returns a `packs` array (dropped by `RawStashItem` because it was not in the model). Each pack has a `skeins` field (float|null). The primary pack (`primary_pack_id: null`) is the authoritative record. To get skein count, sum `skeins` across primary packs, or use the primary pack's `skeins` value directly.
+- **The packs structure always has two entries per stash item**: a "primary" pack (`primary_pack_id: null`) and a secondary pack whose `primary_pack_id` points to the first. The secondary appears to be a UI-layer duplicate — only the primary pack should be used for quantity calculations.
+- **`quantity_description` on the primary pack** gives a human-readable summary (e.g., `"1 skeins = 438.0 yards (400.5m)"`), confirming the `skeins` field is the right source of truth.
+- **`skeins` can still be null in the detail format** — confirmed for stash items where the user has not entered a skein count on Ravelry (pack 126820577 in the sample returned `skeins: null`).
+- **`fiber_categories` is NOT present in the detail format** — the field simply does not appear in the raw stash detail response. Fiber data must be fetched separately from the yarn endpoint.
+- **`long_yarn_weight_name`, `personal_yarn_weight`, `yarn_weight_name`** are present in the detail format but not the list format. These are currently dropped by `RawStashItem`.
+- **`photos`** (full array) is present in detail format vs. `first_photo` (single object) in list format. Both currently dropped.
+- **`user` and `user_id`** are present in detail format. Currently dropped. Not needed for normalization.
+- **`notes` and `notes_html`** are present in detail format. `notes` is already in `RawStashItem`; `notes_html` is dropped.
+
+**Fields dropped by `RawStashItem` that are relevant for normalization:**
+
+- `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
+- `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
+- `long_yarn_weight_name` (detail only) — human-readable weight label
+
+## API discrepancies (to report to Ravelry)
+
+_Discrepancies between official API documentation and observed behavior. Candidate items for a Ravelry API bug report._
+
+- **`skeins` field on stash item**: The Ravelry API documentation describes `skeins` as a top-level field on a stash item. In observed behavior, `skeins` is null on all stash items in both the list and detail endpoints. The actual skein count is nested inside the `packs` array on the detail endpoint (`packs[n].skeins`), not at the stash-item level. The list endpoint does not return `packs` at all.
+  Observed on: `/people/{username}/stash/list.json` and `/people/{username}/stash/{id}.json`. Reproducible: yes.
+
+- **`fiber_categories` field on stash item**: The list endpoint returns `fiber_categories: []` (empty array) for all items even when yarn has known fiber content. The detail endpoint does not return `fiber_categories` at all (field absent). Fiber data must be fetched via a separate yarn detail request.
+  Observed on: `/people/{username}/stash/list.json` and `/people/{username}/stash/{id}.json`. Reproducible: yes.
+
+---
+
 **Real stash scale:**
 
-The demo user has 1,379 stash items. This is much larger than average and useful for stress-testing the agent design. The committed fixture is trimmed to 10 items (one per weight category, varied statuses). The full 1,379-item file is at `tests/fixtures/stash_list_full.json` (gitignored, local only).
-
-Fixture item breakdown:
-- 9 items successfully normalize (have linked yarn with yardage)
-- 1 item has no yarn link and is silently skipped by `normalize_stash`
-- Sweater-quantity items (800+ yds): currently 1 (Lace/990 yds). More will be needed for a compelling agent demo — pull from `stash_list_full.json` when building Phase 3.
+The demo user has 1,379 stash items. This is much larger than average and useful for stress-testing the agent design. The full stash is now committed in `stash_list.json` (sanitized). Of the 1,379 items, 1,313 normalize successfully; 66 have no linked yarn and are silently skipped. The weight-adjusted thresholds apply across all 1,313 normalized items.
 
 ---
 
@@ -223,6 +264,30 @@ LangGraph is a good fit because the project needs state, routing, persistence, a
 ---
 
 ## Product concept
+
+### Two entry modes
+
+The system supports two directions of use. Both share the same downstream filtering and recommendation logic — only the starting point differs.
+
+**Project-first (goal-directed):** User specifies a project goal and the agent finds matching stash yarn.
+
+```text
+"I want a fall cardigan, medium difficulty, something I can finish in 6 weeks."
+  -> filter stash by weight, yardage, fiber suitability
+  -> rank candidates
+  -> return recommendations
+```
+
+**Stash-first:** User specifies a stash item or yarn type and the agent finds fitting project archetypes.
+
+```text
+"What can I make with my 900 yards of sport weight silk?"
+"Help me use up this merino worsted."
+  -> locate matching stash items
+  -> recommend project archetypes that fit
+```
+
+The graph state must accommodate both entry points from Phase 3 onward. The input fields `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present.
 
 ### Core workflow
 
@@ -236,7 +301,7 @@ Prioritize stash yarn, medium difficulty, and something I can realistically fini
 System flow:
 
 ```text
-User goal
+User goal / stash filter
   -> Supervisor Agent
   -> Ravelry Stash Agent
   -> Yarn Normalizer
@@ -271,6 +336,14 @@ Next actions:
 - Add generated notes to the project page.
 - Schedule swatching in Google Calendar.
 ```
+
+### Future interface vision
+
+The CLI is the right demo vehicle for a technical portfolio project. The natural end state for a fiber arts audience is a web chat UI: a simple input box where the user types a goal or describes their yarn, and recommendation cards come back with rationale and risks. Most knitters already think in chat terms from Ravelry's community features.
+
+The path from CLI to web is a thin layer once the graph exists: a FastAPI endpoint wraps the graph, a simple React front end handles input and card rendering. The LangGraph backend doesn't change.
+
+Longer-term possibilities worth noting: a Discord or Slack bot that lives in knitting community servers (there are large active knitting Discords where a stash-aware bot would fit naturally), and a Ravelry-embedded panel if Ravelry ever opens extension support. Neither is a current requirement.
 
 ### LLM context window design constraint
 
@@ -384,20 +457,35 @@ Reads back created/updated records and confirms the side effect succeeded.
 
 ## Implementation plan
 
-### Phase 3 — First LangGraph MVP (NEXT)
+### Phase 2b — API Investigation ✅ COMPLETE (2026-05-14)
 
-Goal: build the simplest useful graph.
+All exit criteria met. Branch: `phase2b`.
+
+- **Skeins field:** `packs[n].skeins` on primary pack (detail endpoint only). `RawPack` model added; `_primary_pack_skeins()` helper implemented. `normalize_stash_item` reads packs first, falls back to `raw.skeins`, then defaults to 1.0.
+- **Weight-adjusted thresholds:** `_SWEATER_YARDS_BY_WEIGHT` lookup implemented. THREAD, COBWEB, LIGHT_FINGERING weight categories added. `project_quantity_from_yards(yards, weight)` now takes weight as second argument.
+- **Stash detail schema:** Documented via raw capture. Fiber requires separate yarn detail request (not implemented — out of scope).
+- **Raw capture mode:** `recorder.py --raw` saves pre-Pydantic JSON to `tests/fixtures/raw/` (gitignored).
+- **Playwright MCP:** Configured in `.mcp.json`; API docs exploration deferred (not blocking Phase 3).
+- **Fixtures refreshed** with full 1,379-item stash. 73 tests passing.
+
+**Potential future improvement (not implemented):** Weight-adjusted thresholds are currently hand-tuned constants. A more accurate approach would sample real Ravelry patterns by weight category and size to derive empirical thresholds. This would also allow `project_quantity_from_yards` to accept size as a parameter (e.g., XS vs. XXL sweaters have meaningfully different yardage requirements). See open question 6 in the Open Questions section.
+
+---
+
+### Phase 3 — First LangGraph MVP
+
+Goal: build the simplest useful graph supporting both entry modes (project-first and stash-first).
 
 Workflow:
 
 ```text
-User goal -> Read stash -> Normalize stash -> Filter to available sweater-qty items
-         -> Recommend project archetypes -> Return ranked options
+User goal / stash filter -> Read stash -> Normalize stash -> Filter to relevant items
+                        -> Recommend project archetypes -> Return ranked options
 ```
 
 Tasks:
 
-- Define graph state (TypedDict with stash items, user goal, recommendations, requires_approval flag).
+- Define graph state (TypedDict with stash items, user_goal, stash_filter, recommendations, requires_approval flag). Both user_goal and stash_filter are optional; at least one required.
 - Add Supervisor node.
 - Add Stash node (calls `RavelryClient` or loads fixture).
 - Add Recommendation node (LLM call with filtered stash context).
@@ -411,6 +499,13 @@ Notes for next session:
 - Use `claude-sonnet-4-6` (model ID: `claude-sonnet-4-6`) or `claude-haiku-4-5-20251001` for cost. The most capable current model is `claude-opus-4-7`.
 - Stash filtering before the LLM node is critical — see context window constraint above.
 - The `--fixture` CLI flag pattern is already established in `cli.py`; extend it to the graph.
+
+Cost controls to build in from the start:
+
+- **Never call real LLM in tests.** Mock at the LangGraph node level — same discipline as `FixtureTransport` for the Ravelry client. Unchecked test runs are the main way API costs accumulate.
+- **Configurable model.** Accept a `SKEINMINDER_MODEL` env var so Haiku can be used during development and Sonnet for real demos.
+- **Fixture mode for LLM nodes.** In `--fixture` mode, LLM nodes return canned responses instead of calling the API. Extend the existing CLI flag pattern into the graph layer.
+- **Prompt caching.** The system prompt and normalized stash summary are stable across a session. Use Claude's prompt caching to reduce input token costs by ~90% on repeated queries.
 
 Exit criteria:
 
@@ -484,11 +579,11 @@ skein-minder/
       ravelry/
         __init__.py
         exceptions.py    # RavelryError hierarchy + NormalizationError
-        models.py        # raw Pydantic models (RawUser, RawYarn, RawStashItem, etc.)
+        models.py        # raw Pydantic models (RawUser, RawYarn, RawPack, RawStashItem, etc.)
         client.py        # RavelryClient (Basic Auth, retries, pagination)
         normalizer.py    # StashItem, enums, normalize_stash, scoring helpers
         sanitizer.py     # strip personal data before committing fixtures
-        recorder.py      # one-shot: captures live API responses as fixtures
+        recorder.py      # one-shot: captures live API responses as fixtures; --raw for pre-Pydantic capture
   tests/
     __init__.py
     conftest.py          # FixtureTransport + fixture_client / fixture_transport fixtures
@@ -517,6 +612,8 @@ Answered:
 - ~~Does the stash list return skeins and fiber?~~ No — skeins=null, fiber_categories=[] in list format.
 - ~~Does project creation require write permissions?~~ Yes, "Personal Account Access" app required.
 - ~~Does the paginator use `pages` or `page_count`?~~ `page_count` in the real API.
+- ~~What fields does the stash detail endpoint add over the list format?~~ Answered by raw capture (2026-05-14): detail adds `packs` (carries actual skein and yardage data), `photos`, `notes_html`, `yarn_weight_name`, `long_yarn_weight_name`, `personal_yarn_weight`, `user`, `user_id`. `fiber_categories` is absent in both formats. See "Critical Ravelry API discoveries" above for full breakdown. (Was question 6.)
+- ~~Does the stash detail endpoint return `skeins` as a non-null value?~~ Yes, but not as a top-level field. Skein count is in `packs[n].skeins` on the primary pack (the one with `primary_pack_id: null`). It can still be null if the user has not entered a count on Ravelry. (Was question 9.)
 
 Still open (need logged-in Ravelry API docs):
 
@@ -525,9 +622,8 @@ Still open (need logged-in Ravelry API docs):
 3. Can start date, end date, status, and notes be set at creation time?
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
-6. What fields does the stash detail endpoint add over the list format? (Likely: skeins, fiber_categories, notes, photos.)
-7. What fields are available in pattern search vs. pattern detail?
-8. Can project photos be uploaded via the API?
+6. What fields are available in pattern search vs. pattern detail?
+7. Can project photos be uploaded via the API?
 
 ---
 
@@ -547,7 +643,7 @@ Still open (need logged-in Ravelry API docs):
 ## Pending housekeeping
 
 - **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
-- The `project-init` branch has not been merged to `main` yet. All work is on this branch.
+- **Merge `phase2b` to `main`.** PR pending. 73 tests passing, CI clean.
 
 ---
 

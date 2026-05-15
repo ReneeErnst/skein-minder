@@ -8,12 +8,14 @@ import pytest
 from skeinminder.ravelry.exceptions import NormalizationError
 from skeinminder.ravelry.models import (
     RawFiberCategory,
+    RawPack,
     RawStashItem,
     RawStashListResponse,
     RawYarn,
     RawYarnWeight,
 )
 from skeinminder.ravelry.normalizer import (
+    _WEIGHT_ORDER,
     ProjectQuantity,
     StashItem,
     WeightCategory,
@@ -58,44 +60,57 @@ def _make_raw_item(
     )
 
 
-def test_weight_category_worsted() -> None:
-    assert weight_category_from_string("Worsted") == WeightCategory.WORSTED
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("Worsted", WeightCategory.WORSTED),
+        ("Fingering", WeightCategory.FINGERING),
+        ("DK", WeightCategory.DK),
+        ("Lace", WeightCategory.LACE),
+        ("thread", WeightCategory.THREAD),
+        ("cobweb", WeightCategory.COBWEB),
+        ("light fingering", WeightCategory.LIGHT_FINGERING),
+        ("CrazyUnknown", WeightCategory.UNKNOWN),
+        (None, WeightCategory.UNKNOWN),
+    ],
+)
+def test_weight_category_from_string(
+    value: str | None, expected: WeightCategory
+) -> None:
+    assert weight_category_from_string(value) == expected
 
 
-def test_weight_category_fingering() -> None:
-    assert weight_category_from_string("Fingering") == WeightCategory.FINGERING
+def test_weight_order_lightest_to_heaviest() -> None:
+    thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
+    cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
+    lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
+    lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
+    fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
+    assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
 
 
-def test_weight_category_dk() -> None:
-    assert weight_category_from_string("DK") == WeightCategory.DK
-
-
-def test_weight_category_lace() -> None:
-    assert weight_category_from_string("Lace") == WeightCategory.LACE
-
-
-def test_weight_category_unknown_string() -> None:
-    assert weight_category_from_string("CrazyUnknown") == WeightCategory.UNKNOWN
-
-
-def test_weight_category_none() -> None:
-    assert weight_category_from_string(None) == WeightCategory.UNKNOWN
-
-
-def test_project_quantity_scrap() -> None:
-    assert project_quantity_from_yards(150.0) == ProjectQuantity.SCRAP
-
-
-def test_project_quantity_accessory_lower_bound() -> None:
-    assert project_quantity_from_yards(200.0) == ProjectQuantity.ACCESSORY
-
-
-def test_project_quantity_accessory_upper_bound() -> None:
-    assert project_quantity_from_yards(799.0) == ProjectQuantity.ACCESSORY
-
-
-def test_project_quantity_sweater() -> None:
-    assert project_quantity_from_yards(800.0) == ProjectQuantity.SWEATER
+@pytest.mark.parametrize(
+    "yards,weight,expected",
+    [
+        (150.0, WeightCategory.WORSTED, ProjectQuantity.SCRAP),
+        (200.0, WeightCategory.WORSTED, ProjectQuantity.ACCESSORY),
+        (799.0, WeightCategory.WORSTED, ProjectQuantity.ACCESSORY),
+        (800.0, WeightCategory.WORSTED, ProjectQuantity.SWEATER),
+        (600.0, WeightCategory.BULKY, ProjectQuantity.SWEATER),  # bulky threshold 500
+        (
+            800.0,
+            WeightCategory.FINGERING,
+            ProjectQuantity.ACCESSORY,
+        ),  # fingering threshold 1200
+        (1600.0, WeightCategory.LACE, ProjectQuantity.SWEATER),  # lace threshold 1500
+        (800.0, WeightCategory.UNKNOWN, ProjectQuantity.SWEATER),
+        (799.0, WeightCategory.UNKNOWN, ProjectQuantity.ACCESSORY),
+    ],
+)
+def test_project_quantity_from_yards(
+    yards: float, weight: WeightCategory, expected: ProjectQuantity
+) -> None:
+    assert project_quantity_from_yards(yards, weight) == expected
 
 
 def test_stash_item_construction() -> None:
@@ -136,7 +151,9 @@ def test_normalize_stash_item_fingering() -> None:
     item = normalize_stash_item(raw)
     assert item.weight_category == WeightCategory.FINGERING
     assert item.yards_total == pytest.approx(2.0 * 400.0)
-    assert item.project_quantity == ProjectQuantity.SWEATER
+    assert (
+        item.project_quantity == ProjectQuantity.ACCESSORY
+    )  # 800 yds < 1200 fingering threshold
     assert "Nylon" in item.fiber
 
 
@@ -182,5 +199,37 @@ def test_normalize_stash_returns_list() -> None:
     data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
     raw_list = RawStashListResponse.model_validate(data)
     items = normalize_stash(raw_list.stash)
-    assert len(items) == 9  # 10 fixture items, 1 has no yarn and is skipped
+    assert len(items) == 33  # 36 fixture items, 3 have no yarn and are skipped
     assert all(isinstance(i, StashItem) for i in items)
+
+
+def test_normalize_stash_item_reads_skeins_from_primary_pack() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    raw_with_packs = raw.model_copy(
+        update={
+            "packs": [
+                RawPack(id=1, primary_pack_id=None, skeins=4.0),  # primary
+                RawPack(
+                    id=2, primary_pack_id=1, skeins=99.0
+                ),  # secondary — must be ignored
+            ]
+        }
+    )
+    item = normalize_stash_item(raw_with_packs)
+    assert item.skeins == 4.0
+    assert item.yards_total == pytest.approx(4.0 * 200.0)
+
+
+def test_normalize_stash_item_falls_back_to_default_when_pack_skeins_null() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    raw_with_packs = raw.model_copy(
+        update={"packs": [RawPack(id=1, primary_pack_id=None, skeins=None)]}
+    )
+    item = normalize_stash_item(raw_with_packs)
+    assert item.skeins == 1.0
+
+
+def test_normalize_stash_item_falls_back_to_default_when_no_packs() -> None:
+    raw = _make_raw_item(skeins=None, yardage=200.0)
+    item = normalize_stash_item(raw)
+    assert item.skeins == 1.0

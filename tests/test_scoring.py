@@ -41,76 +41,56 @@ def _make_item(
 # --- yardage_buffer ---
 
 
-def test_yardage_buffer_positive_overage() -> None:
-    item = _make_item(yards_total=1100.0)
-    result = yardage_buffer(item, pattern_yards=950.0)
-    assert result == pytest.approx((1100.0 - 950.0) / 950.0 * 100, rel=1e-3)
-
-
-def test_yardage_buffer_deficit() -> None:
-    item = _make_item(yards_total=800.0)
-    result = yardage_buffer(item, pattern_yards=950.0)
-    assert result < 0
-
-
-def test_yardage_buffer_exact() -> None:
-    item = _make_item(yards_total=1000.0)
-    result = yardage_buffer(item, pattern_yards=1000.0)
-    assert result == pytest.approx(0.0)
+@pytest.mark.parametrize(
+    "yards_total,pattern_yards,expected_pct",
+    [
+        (1100.0, 950.0, (1100.0 - 950.0) / 950.0 * 100),
+        (800.0, 950.0, (800.0 - 950.0) / 950.0 * 100),
+        (1000.0, 1000.0, 0.0),
+    ],
+)
+def test_yardage_buffer(
+    yards_total: float, pattern_yards: float, expected_pct: float
+) -> None:
+    item = _make_item(yards_total=yards_total)
+    assert yardage_buffer(item, pattern_yards) == pytest.approx(expected_pct, rel=1e-3)
 
 
 # --- weight_match ---
 
 
-def test_weight_match_exact() -> None:
-    item = _make_item(weight=WeightCategory.WORSTED)
-    assert weight_match(item, WeightCategory.WORSTED) == MatchScore.EXACT
-
-
-def test_weight_match_adjacent_heavier() -> None:
-    item = _make_item(weight=WeightCategory.DK)
-    assert weight_match(item, WeightCategory.WORSTED) == MatchScore.ADJACENT
-
-
-def test_weight_match_adjacent_lighter() -> None:
-    item = _make_item(weight=WeightCategory.ARAN)
-    assert weight_match(item, WeightCategory.WORSTED) == MatchScore.ADJACENT
-
-
-def test_weight_match_mismatch() -> None:
-    item = _make_item(weight=WeightCategory.LACE)
-    assert weight_match(item, WeightCategory.BULKY) == MatchScore.MISMATCH
-
-
-def test_weight_match_unknown() -> None:
-    item = _make_item(weight=WeightCategory.UNKNOWN)
-    assert weight_match(item, WeightCategory.WORSTED) == MatchScore.MISMATCH
+@pytest.mark.parametrize(
+    "item_weight,pattern_weight,expected",
+    [
+        (WeightCategory.WORSTED, WeightCategory.WORSTED, MatchScore.EXACT),
+        (WeightCategory.DK, WeightCategory.WORSTED, MatchScore.ADJACENT),
+        (WeightCategory.ARAN, WeightCategory.WORSTED, MatchScore.ADJACENT),
+        (WeightCategory.LACE, WeightCategory.BULKY, MatchScore.MISMATCH),
+        (WeightCategory.UNKNOWN, WeightCategory.WORSTED, MatchScore.MISMATCH),
+    ],
+)
+def test_weight_match(
+    item_weight: WeightCategory, pattern_weight: WeightCategory, expected: MatchScore
+) -> None:
+    item = _make_item(weight=item_weight)
+    assert weight_match(item, pattern_weight) == expected
 
 
 # --- fiber_suitability ---
 
 
-def test_fiber_wool_cardigan_exact() -> None:
-    item = _make_item(fiber=["Wool"])
-    assert fiber_suitability(item, "cardigan") == MatchScore.EXACT
-
-
-def test_fiber_acrylic_cardigan_adjacent() -> None:
-    item = _make_item(fiber=["Acrylic"])
-    assert fiber_suitability(item, "cardigan") == MatchScore.ADJACENT
-
-
-def test_fiber_superwash_baby_exact() -> None:
-    item = _make_item(fiber=["Superwash Wool"])
-    assert fiber_suitability(item, "baby") == MatchScore.EXACT
-
-
-def test_fiber_silk_cables_mismatch() -> None:
-    item = _make_item(fiber=["Silk"])
-    assert fiber_suitability(item, "cables") == MatchScore.MISMATCH
-
-
-def test_fiber_unknown_returns_adjacent() -> None:
-    item = _make_item(fiber=["Unicorn Hair"])
-    # Unknown fiber → ADJACENT (not disqualifying, but flagged)
-    assert fiber_suitability(item, "cardigan") == MatchScore.ADJACENT
+@pytest.mark.parametrize(
+    "fibers,garment,expected",
+    [
+        (["Wool"], "cardigan", MatchScore.EXACT),
+        (["Acrylic"], "cardigan", MatchScore.ADJACENT),
+        (["Superwash Wool"], "baby", MatchScore.EXACT),
+        (["Silk"], "cables", MatchScore.MISMATCH),
+        (["Unicorn Hair"], "cardigan", MatchScore.ADJACENT),  # unknown fiber → ADJACENT
+    ],
+)
+def test_fiber_suitability(
+    fibers: list[str], garment: str, expected: MatchScore
+) -> None:
+    item = _make_item(fiber=fibers)
+    assert fiber_suitability(item, garment) == expected

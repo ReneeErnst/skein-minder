@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class WeightCategory(str, Enum):
+    THREAD = "thread"
+    COBWEB = "cobweb"
     LACE = "lace"
+    LIGHT_FINGERING = "light_fingering"
     FINGERING = "fingering"
     SPORT = "sport"
     DK = "dk"
@@ -23,7 +26,10 @@ class WeightCategory(str, Enum):
 
 
 _WEIGHT_MAP: dict[str, WeightCategory] = {
+    "thread": WeightCategory.THREAD,
+    "cobweb": WeightCategory.COBWEB,
     "lace": WeightCategory.LACE,
+    "light fingering": WeightCategory.LIGHT_FINGERING,
     "fingering": WeightCategory.FINGERING,
     "sock": WeightCategory.FINGERING,
     "sport": WeightCategory.SPORT,
@@ -50,13 +56,29 @@ class ProjectQuantity(str, Enum):
 
 
 _SCRAP_THRESHOLD = 200.0
-_SWEATER_THRESHOLD = 800.0
+
+_SWEATER_YARDS_BY_WEIGHT: dict[WeightCategory, float] = {
+    WeightCategory.THREAD: 2000.0,
+    WeightCategory.COBWEB: 2000.0,
+    WeightCategory.LACE: 1500.0,
+    WeightCategory.LIGHT_FINGERING: 1100.0,  # below FINGERING: rare weight
+    WeightCategory.FINGERING: 1200.0,
+    WeightCategory.SPORT: 1000.0,
+    WeightCategory.DK: 900.0,
+    WeightCategory.WORSTED: 800.0,
+    WeightCategory.ARAN: 650.0,
+    WeightCategory.BULKY: 500.0,
+    WeightCategory.SUPER_BULKY: 300.0,
+    WeightCategory.UNKNOWN: 800.0,
+}
 
 
-def project_quantity_from_yards(yards: float) -> ProjectQuantity:
+def project_quantity_from_yards(
+    yards: float, weight: WeightCategory
+) -> ProjectQuantity:
     if yards < _SCRAP_THRESHOLD:
         return ProjectQuantity.SCRAP
-    if yards < _SWEATER_THRESHOLD:
+    if yards < _SWEATER_YARDS_BY_WEIGHT[weight]:
         return ProjectQuantity.ACCESSORY
     return ProjectQuantity.SWEATER
 
@@ -87,7 +109,18 @@ class StashItem(BaseModel):
 
 
 from skeinminder.ravelry.exceptions import NormalizationError  # noqa: E402
-from skeinminder.ravelry.models import RawStashItem  # noqa: E402
+from skeinminder.ravelry.models import RawPack, RawStashItem  # noqa: E402
+
+
+def _primary_pack_skeins(packs: list[RawPack]) -> float | None:
+    """Return skeins from the primary pack (primary_pack_id is None).
+
+    Returns None if no primary pack is found or its skeins field is null.
+    """
+    for pack in packs:
+        if pack.primary_pack_id is None:
+            return pack.skeins
+    return None
 
 
 def normalize_stash_item(raw: RawStashItem) -> StashItem:
@@ -101,11 +134,17 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
             f"stash item {raw.id} has no yardage value (yarn id {yarn.id})"
         )
 
-    skeins = raw.skeins if raw.skeins is not None else 1.0
+    pack_skeins = _primary_pack_skeins(raw.packs)
+    skeins = (
+        pack_skeins
+        if pack_skeins is not None
+        else (raw.skeins if raw.skeins is not None else 1.0)
+    )
     yards_per_skein = float(yarn.yardage)
     grams_per_skein = float(yarn.grams) if yarn.grams is not None else None
     brand = yarn.yarn_company_name or "Unknown"
     weight_str = yarn.yarn_weight.name if yarn.yarn_weight else None
+    weight_category = weight_category_from_string(weight_str)
     fibers = [fc.name for fc in yarn.fiber_categories]
 
     yards_total = skeins * yards_per_skein
@@ -116,7 +155,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
         brand=brand,
         yarn_name=raw.yarn_name or (yarn.name or "Unknown"),
         colorway=raw.colorway_name,
-        weight_category=weight_category_from_string(weight_str),
+        weight_category=weight_category,
         fiber=fibers,
         color_family=raw.color_family_name,
         skeins=skeins,
@@ -124,7 +163,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
         yards_total=yards_total,
         grams_total=grams_total,
         notes=raw.notes,
-        project_quantity=project_quantity_from_yards(yards_total),
+        project_quantity=project_quantity_from_yards(yards_total, weight_category),
     )
 
 
@@ -140,7 +179,10 @@ def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
 
 # Weight ordering for adjacency checks (lower index = lighter)
 _WEIGHT_ORDER: list[WeightCategory] = [
+    WeightCategory.THREAD,
+    WeightCategory.COBWEB,
     WeightCategory.LACE,
+    WeightCategory.LIGHT_FINGERING,
     WeightCategory.FINGERING,
     WeightCategory.SPORT,
     WeightCategory.DK,
