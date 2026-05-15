@@ -61,7 +61,7 @@ _SWEATER_YARDS_BY_WEIGHT: dict[WeightCategory, float] = {
     WeightCategory.THREAD: 2000.0,
     WeightCategory.COBWEB: 2000.0,
     WeightCategory.LACE: 1500.0,
-    WeightCategory.LIGHT_FINGERING: 1100.0,
+    WeightCategory.LIGHT_FINGERING: 1100.0,  # below FINGERING: rare weight
     WeightCategory.FINGERING: 1200.0,
     WeightCategory.SPORT: 1000.0,
     WeightCategory.DK: 900.0,
