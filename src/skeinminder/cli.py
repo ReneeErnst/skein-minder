@@ -26,6 +26,36 @@ def stash(fixture: bool) -> None:
     _print_summary(items)
 
 
+@cli.command()
+@click.argument("goal")
+@click.option(
+    "--fixture",
+    is_flag=True,
+    help="Read from committed fixture files instead of live Ravelry.",
+)
+def recommend(goal: str, fixture: bool) -> None:
+    """Get project recommendations based on a goal or yarn description."""
+    from skeinminder.graph.graph import build_graph
+
+    stash = _load_stash(fixture)
+    graph = build_graph()
+    result = graph.invoke(
+        {
+            "user_input": goal,
+            "normalized_stash": stash,
+            "filtered_stash": [],
+            "mode": "",
+            "user_goal": None,
+            "stash_filter": None,
+            "recommendations": None,
+            "requires_approval": False,
+            "formatted_output": None,
+        }
+    )
+    output = result.get("formatted_output") or "No recommendations generated."
+    click.echo(output)
+
+
 def _load_stash(use_fixture: bool) -> list[StashItem]:
     if use_fixture:
         import json
