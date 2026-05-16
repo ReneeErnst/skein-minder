@@ -9,13 +9,13 @@ from skeinminder.graph import nodes
 from skeinminder.graph.state import GraphState
 
 
-def build_graph() -> CompiledStateGraph:
+def build_graph() -> CompiledStateGraph[GraphState]:
     """Build and compile the recommendation graph.
 
     Nodes are referenced via the `nodes` module object so that
     patch('skeinminder.graph.nodes.<node>') works correctly in tests.
     """
-    workflow: StateGraph = StateGraph(GraphState)
+    workflow: StateGraph[GraphState] = StateGraph(GraphState)
 
     workflow.add_node("supervisor", nodes.supervisor)
     workflow.add_node("project_first_filter", nodes.project_first_filter)

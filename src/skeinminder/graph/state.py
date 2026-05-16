@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel
 
@@ -32,7 +32,7 @@ class GraphState(TypedDict):
     """Shared state passed between all graph nodes."""
 
     user_input: str
-    mode: str  # "project_first" | "stash_first"
+    mode: Literal["project_first", "stash_first", ""]
     user_goal: str | None
     stash_filter: StashFilter | None
     normalized_stash: list[StashItem]
