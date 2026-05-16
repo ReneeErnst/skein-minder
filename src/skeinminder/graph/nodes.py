@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
-from skeinminder.graph.state import GraphState, StashFilter
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel
+
+from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import (
     MatchScore,
     StashItem,
@@ -132,3 +137,100 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
 
     filtered.sort(key=lambda i: i.yards_total, reverse=True)
     return {"filtered_stash": filtered[:20]}
+
+
+class _RecommendationList(BaseModel):
+    """Wrapper model for structured LLM output — a list of exactly 3 recommendations."""
+
+    recommendations: list[Recommendation]
+
+
+_SYSTEM_PROMPT = (
+    "You are a knitting project advisor. Given yarn from a user's stash and their"
+    " goal, recommend exactly 3 projects. For each recommendation provide:\n"
+    "- title: short project name and key features\n"
+    "- rationale: 2-3 sentences explaining why this yarn suits this project\n"
+    "- risks: list of 2-4 specific risks the knitter should know\n"
+    "- yarn_candidate_ids: list of stash IDs from the input for this project\n"
+    "Always return exactly 3 recommendations."
+)
+
+
+def _format_stash_for_prompt(items: list[StashItem]) -> str:
+    """Format filtered stash items as a numbered list for the LLM prompt."""
+    lines: list[str] = []
+    for item in items:
+        fiber = ", ".join(item.fiber) if item.fiber else "unknown fiber"
+        colorway = f" ({item.colorway})" if item.colorway else ""
+        lines.append(
+            f"[ID {item.stash_id}] {item.brand} {item.yarn_name}{colorway}"
+            f" — {item.weight_category.value}, {item.yards_total:.0f} yds, {fiber}"
+        )
+    return "\n".join(lines)
+
+
+def recommend(state: GraphState) -> dict[str, Any]:
+    """Call the LLM with filtered stash context and return 3 Recommendation objects.
+
+    Uses the model named by SKEINMINDER_MODEL env var (default:
+    claude-haiku-4-5-20251001). The system prompt is marked for prompt caching to
+    reduce cost on repeated calls.
+    """
+    model_name = os.getenv("SKEINMINDER_MODEL", "claude-haiku-4-5-20251001")
+    client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    structured = client.with_structured_output(_RecommendationList)
+
+    stash_summary = _format_stash_for_prompt(state["filtered_stash"])
+
+    if state["mode"] == "project_first":
+        human_text = f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+    else:
+        human_text = (
+            f"Yarn in stash:\n{stash_summary}\n\n"
+            "What projects would work well with this yarn?"
+        )
+
+    messages = [
+        SystemMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": _SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        ),
+        HumanMessage(content=human_text),
+    ]
+
+    result = structured.invoke(messages)
+    assert isinstance(result, _RecommendationList)
+    return {"recommendations": result.recommendations}
+
+
+def format_output(state: GraphState) -> dict[str, Any]:
+    """Format recommendations as a plain-text CLI report.
+
+    Resolves yarn_candidate_ids back to yarn names using normalized_stash.
+    """
+    recs = state["recommendations"] or []
+    stash_by_id = {item.stash_id: item for item in state["normalized_stash"]}
+
+    lines: list[str] = ["Project recommendations", "─" * 40]
+    for i, rec in enumerate(recs, 1):
+        lines.append(f"\n{i}. {rec.title}")
+        lines.append(f"   {rec.rationale}")
+        if rec.risks:
+            lines.append("   Risks:")
+            for risk in rec.risks:
+                lines.append(f"     • {risk}")
+        if rec.yarn_candidate_ids:
+            yarn_names: list[str] = []
+            for sid in rec.yarn_candidate_ids:
+                item = stash_by_id.get(sid)
+                if item:
+                    yarn_names.append(f"{item.brand} {item.yarn_name}")
+            if yarn_names:
+                lines.append(f"   Yarn: {', '.join(yarn_names)}")
+
+    return {"formatted_output": "\n".join(lines)}

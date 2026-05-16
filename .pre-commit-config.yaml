@@ -17,3 +17,5 @@ repos:
           - pytest>=8
           - python-dotenv>=1
           - click>=8
+          - langchain-anthropic>=0.3
+          - langchain-core>=0.3

@@ -43,5 +43,10 @@ select = ["E", "F", "I"]
 strict = true
 python_version = "3.13"
 
+[[tool.mypy.overrides]]
+# graph.py does not exist until Task 6; suppress import-not-found in tests.
+module = "skeinminder.graph.graph"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
