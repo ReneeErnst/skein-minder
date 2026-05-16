@@ -1,0 +1,40 @@
+"""Builds the compiled LangGraph for SkeinMinder project recommendations."""
+
+from __future__ import annotations
+
+from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+
+from skeinminder.graph import nodes
+from skeinminder.graph.state import GraphState
+
+
+def build_graph() -> CompiledStateGraph:
+    """Build and compile the recommendation graph.
+
+    Nodes are referenced via the `nodes` module object so that
+    patch('skeinminder.graph.nodes.<node>') works correctly in tests.
+    """
+    workflow: StateGraph = StateGraph(GraphState)
+
+    workflow.add_node("supervisor", nodes.supervisor)
+    workflow.add_node("project_first_filter", nodes.project_first_filter)
+    workflow.add_node("stash_first_filter", nodes.stash_first_filter)
+    workflow.add_node("recommend", nodes.recommend)
+    workflow.add_node("format_output", nodes.format_output)
+
+    workflow.set_entry_point("supervisor")
+    workflow.add_conditional_edges(
+        "supervisor",
+        lambda state: state["mode"],
+        {
+            "project_first": "project_first_filter",
+            "stash_first": "stash_first_filter",
+        },
+    )
+    workflow.add_edge("project_first_filter", "recommend")
+    workflow.add_edge("stash_first_filter", "recommend")
+    workflow.add_edge("recommend", "format_output")
+    workflow.add_edge("format_output", END)
+
+    return workflow.compile()
