@@ -203,8 +203,7 @@ def recommend(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    result = structured.invoke(messages)
-    assert isinstance(result, _RecommendationList)
+    result: _RecommendationList = structured.invoke(messages)  # type: ignore[assignment]
     return {"recommendations": result.recommendations}
 
 

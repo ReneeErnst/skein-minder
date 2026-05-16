@@ -10,7 +10,7 @@ from skeinminder.ravelry.normalizer import (
 )
 
 
-def _make_item(stash_id: int = 1, yards_total: float = 1000.0) -> StashItem:
+def _make_item(*, stash_id: int = 1, yards_total: float = 1000.0) -> StashItem:
     return StashItem(
         stash_id=stash_id,
         brand="Test Brand",
