@@ -8,6 +8,8 @@ import httpx
 import pytest
 
 from skeinminder.ravelry.client import RavelryClient
+from skeinminder.ravelry.models import RawStashListResponse
+from skeinminder.ravelry.normalizer import StashItem, normalize_stash
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -47,3 +49,10 @@ def fixture_client(
     client = RavelryClient(transport=fixture_transport)
     yield client
     client.close()
+
+
+@pytest.fixture
+def normalized_stash() -> list[StashItem]:
+    data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
+    raw = RawStashListResponse.model_validate(data)
+    return normalize_stash(raw.stash)
