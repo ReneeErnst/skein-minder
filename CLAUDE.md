@@ -72,6 +72,7 @@ The `graph/`, `agents/`, and `tools/` packages are planned for later phases.
 ## Git workflow
 
 - Never commit directly to `main`. All work goes on a feature branch (e.g., `phase3`) and merges via PR.
+- Do not commit `docs/superpowers/` — it is gitignored intentionally. Specs and plans in that directory are local working documents, not part of the project history.
 
 ## CI
 
