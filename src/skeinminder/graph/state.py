@@ -38,5 +38,5 @@ class GraphState(TypedDict):
     normalized_stash: list[StashItem]
     filtered_stash: list[StashItem]
     recommendations: list[Recommendation] | None
-    requires_approval: bool
+    requires_approval: bool  # Phase 5 stub: set True before write operations
     formatted_output: str | None

@@ -18,21 +18,22 @@ from skeinminder.ravelry.normalizer import (
     weight_match,
 )
 
-# Longer multi-word keywords come first to prevent substring matching errors.
-_WEIGHT_KEYWORDS: dict[str, WeightCategory] = {
-    "light fingering": WeightCategory.LIGHT_FINGERING,
-    "super bulky": WeightCategory.SUPER_BULKY,
-    "thread": WeightCategory.THREAD,
-    "cobweb": WeightCategory.COBWEB,
-    "lace": WeightCategory.LACE,
-    "fingering": WeightCategory.FINGERING,
-    "sock": WeightCategory.FINGERING,
-    "sport": WeightCategory.SPORT,
-    "dk": WeightCategory.DK,
-    "worsted": WeightCategory.WORSTED,
-    "aran": WeightCategory.ARAN,
-    "bulky": WeightCategory.BULKY,
-}
+# Sorted longest-first so multi-word entries like "light fingering" match
+# before their single-word substrings like "fingering".
+_WEIGHT_KEYWORDS: list[tuple[str, WeightCategory]] = [
+    ("light fingering", WeightCategory.LIGHT_FINGERING),
+    ("super bulky", WeightCategory.SUPER_BULKY),
+    ("thread", WeightCategory.THREAD),
+    ("cobweb", WeightCategory.COBWEB),
+    ("lace", WeightCategory.LACE),
+    ("fingering", WeightCategory.FINGERING),
+    ("sock", WeightCategory.FINGERING),
+    ("sport", WeightCategory.SPORT),
+    ("dk", WeightCategory.DK),
+    ("worsted", WeightCategory.WORSTED),
+    ("aran", WeightCategory.ARAN),
+    ("bulky", WeightCategory.BULKY),
+]
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
@@ -43,7 +44,7 @@ _SWEATER_GARMENTS = frozenset(
 
 def _extract_weight(text: str) -> WeightCategory | None:
     """Return the first WeightCategory keyword found in text, or None."""
-    for keyword, weight in sorted(_WEIGHT_KEYWORDS.items(), key=lambda x: -len(x[0])):
+    for keyword, weight in _WEIGHT_KEYWORDS:
         if keyword in text:
             return weight
     return None

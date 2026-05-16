@@ -37,7 +37,7 @@ def test_stash_no_flag_fails_without_credentials(
     assert result.exit_code != 0
 
 
-def test_recommend_fixture_flag_returns_output(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_recommend_fixture_flag_returns_output() -> None:
     canned = [
         Recommendation(
             title=f"Project {i}",
