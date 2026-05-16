@@ -1,3 +1,5 @@
+"""Graph state types for the SkeinMinder recommendation graph."""
+
 from __future__ import annotations
 
 from typing import TypedDict
@@ -8,6 +10,8 @@ from skeinminder.ravelry.normalizer import StashItem, WeightCategory
 
 
 class StashFilter(BaseModel):
+    """Filter criteria for narrowing the normalized stash before LLM recommendation."""
+
     weight: WeightCategory | None = None
     min_yards: float | None = None
     max_yards: float | None = None
@@ -16,6 +20,8 @@ class StashFilter(BaseModel):
 
 
 class Recommendation(BaseModel):
+    """A single project recommendation produced by the recommend node."""
+
     title: str
     rationale: str
     risks: list[str]
@@ -23,6 +29,8 @@ class Recommendation(BaseModel):
 
 
 class GraphState(TypedDict):
+    """Shared state passed between all graph nodes."""
+
     user_input: str
     mode: str  # "project_first" | "stash_first"
     user_goal: str | None

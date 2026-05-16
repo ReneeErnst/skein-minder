@@ -102,7 +102,7 @@ def test_project_first_filter_includes_adjacent_weight() -> None:
 def test_project_first_filter_caps_at_20_items() -> None:
     items = [_make_item(stash_id=i) for i in range(30)]
     result = project_first_filter(_make_state(stash=items, user_goal="I want a hat"))
-    assert len(result["filtered_stash"]) <= 20
+    assert len(result["filtered_stash"]) == 20
 
 
 def test_project_first_filter_sorts_by_yardage_descending() -> None:
@@ -122,7 +122,7 @@ def test_project_first_filter_sorts_by_yardage_descending() -> None:
 def test_stash_first_filter_no_filter_returns_up_to_20() -> None:
     items = [_make_item(stash_id=i) for i in range(30)]
     result = stash_first_filter(_make_state(stash=items, stash_filter=StashFilter()))
-    assert len(result["filtered_stash"]) <= 20
+    assert len(result["filtered_stash"]) == 20
 
 
 def test_stash_first_filter_by_weight() -> None:
@@ -174,3 +174,27 @@ def test_stash_first_filter_by_color_family() -> None:
     ids = [i.stash_id for i in result["filtered_stash"]]
     assert 1 in ids
     assert 2 not in ids
+
+
+def test_stash_first_filter_by_max_yards() -> None:
+    items = [
+        _make_item(stash_id=1, yards_total=400.0),
+        _make_item(stash_id=2, yards_total=1000.0),
+    ]
+    result = stash_first_filter(
+        _make_state(stash=items, stash_filter=StashFilter(max_yards=600.0))
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 not in ids
+
+
+def test_project_first_filter_with_real_stash(
+    normalized_stash: list[StashItem],
+) -> None:
+    result = project_first_filter(
+        _make_state(stash=normalized_stash, user_goal="I want a cozy cardigan")
+    )
+    filtered = result["filtered_stash"]
+    assert len(filtered) <= 20
+    assert all(i.yards_total > 0 for i in filtered)

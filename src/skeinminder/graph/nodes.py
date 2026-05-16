@@ -1,3 +1,5 @@
+"""Graph nodes for the SkeinMinder recommendation workflow."""
+
 from __future__ import annotations
 
 import re
@@ -35,6 +37,7 @@ _SWEATER_GARMENTS = frozenset(
 
 
 def _extract_weight(text: str) -> WeightCategory | None:
+    """Return the first WeightCategory keyword found in text, or None."""
     for keyword, weight in sorted(_WEIGHT_KEYWORDS.items(), key=lambda x: -len(x[0])):
         if keyword in text:
             return weight
@@ -42,11 +45,18 @@ def _extract_weight(text: str) -> WeightCategory | None:
 
 
 def _extract_yards(text: str) -> float | None:
+    """Return the first yardage value found in text (e.g. '900 yards' → 900.0)."""
     m = re.search(r"(\d+(?:\.\d+)?)\s*(?:yards?|yds?)", text)
     return float(m.group(1)) if m else None
 
 
 def supervisor(state: GraphState) -> dict[str, Any]:
+    """Deterministically classify mode and populate user_goal or stash_filter.
+
+    Sets mode to "stash_first" when the input contains a trigger phrase (e.g. "use my",
+    "i have"), and extracts weight/yardage into a StashFilter. Otherwise sets mode to
+    "project_first" and passes the raw user input as user_goal.
+    """
     text = state["user_input"].lower()
     mode = (
         "stash_first"
@@ -65,10 +75,18 @@ def supervisor(state: GraphState) -> dict[str, Any]:
 
 
 def project_first_filter(state: GraphState) -> dict[str, Any]:
+    """Filter stash by weight match and project quantity, capped at 20 items.
+
+    Excludes weight mismatches when a weight keyword is present in the goal. Excludes
+    scrap-quantity items when the goal mentions a sweater-scale garment. Results are
+    sorted by yards_total descending.
+    """
     stash = state["normalized_stash"]
     goal = (state["user_goal"] or "").lower()
     weight = _extract_weight(goal)
-    is_sweater_goal = any(g in goal for g in _SWEATER_GARMENTS)
+    is_sweater_goal = any(
+        re.search(r"\b" + g + r"\b", goal) is not None for g in _SWEATER_GARMENTS
+    )
 
     filtered: list[StashItem] = []
     for item in stash:
@@ -83,6 +101,11 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
 
 
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
+    """Filter stash by StashFilter fields, capped at 20 items.
+
+    Applies filters in order: specific_stash_id, weight, min_yards, max_yards,
+    color_family. Results are sorted by yards_total descending.
+    """
     stash = state["normalized_stash"]
     f = state["stash_filter"]
 
