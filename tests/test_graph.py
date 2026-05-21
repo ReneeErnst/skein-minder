@@ -251,3 +251,60 @@ def test_assess_filter_quality_high_for_stash_first_mode() -> None:
     result = assess_filter_quality(state)
     # stash_first has no user_goal → not a sweater goal → yardage check skipped → high
     assert result["filter_confidence"] == "high"
+
+
+# --- low_confidence_output ---
+
+
+def test_low_confidence_output_user_confirms() -> None:
+    from unittest.mock import patch
+
+    from skeinminder.graph.nodes import low_confidence_output
+    from skeinminder.graph.state import GraphState
+
+    state = GraphState(
+        user_input="I want a cardigan",
+        mode="project_first",
+        user_goal="I want a cardigan",
+        stash_filter=None,
+        normalized_stash=[],
+        filtered_stash=[],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="low",
+        force_recommend=False,
+    )
+
+    with patch("click.confirm", return_value=True), patch("click.echo"):
+        result = low_confidence_output(state)
+
+    assert result["force_recommend"] is True
+    assert "formatted_output" not in result
+
+
+def test_low_confidence_output_user_declines() -> None:
+    from unittest.mock import patch
+
+    from skeinminder.graph.nodes import low_confidence_output
+    from skeinminder.graph.state import GraphState
+
+    state = GraphState(
+        user_input="I want a cardigan",
+        mode="project_first",
+        user_goal="I want a cardigan",
+        stash_filter=None,
+        normalized_stash=[],
+        filtered_stash=[],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="low",
+        force_recommend=False,
+    )
+
+    with patch("click.confirm", return_value=False), patch("click.echo"):
+        result = low_confidence_output(state)
+
+    assert result["force_recommend"] is False
+    assert "No recommendations generated" in result["formatted_output"]

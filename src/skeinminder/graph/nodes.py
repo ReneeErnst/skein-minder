@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any
 
-import click  # noqa: F401
+import click
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
@@ -184,6 +184,46 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     if is_sweater_goal and total_yards < 500:
         return {"filter_confidence": "low"}
     return {"filter_confidence": "high"}
+
+
+def low_confidence_output(state: GraphState) -> dict[str, Any]:
+    """Summarise what the filter found and ask the user whether to proceed anyway.
+
+    Prints the filtered items (or a 'nothing matched' message), then prompts via
+    click.confirm. Returns force_recommend=True if the user wants to continue,
+    or sets formatted_output to an exit message if not.
+    """
+    filtered = state["filtered_stash"]
+
+    lines = ["No strong yarn matches found for your goal."]
+    if filtered:
+        lines.append(f"\nFound {len(filtered)} item(s) that may not be ideal:")
+        for item in filtered:
+            lines.append(
+                f"  • {item.brand} {item.yarn_name}"
+                f" — {item.weight_category.value}, {item.yards_total:.0f} yds"
+            )
+    else:
+        lines.append("\nNo yarn in your stash matched the filters for this goal.")
+
+    lines.append(
+        "\nNote: a future version of SkeinMinder will be able to suggest yarn"
+        " to purchase."
+    )
+    click.echo("\n".join(lines))
+
+    proceed = click.confirm(
+        "\nGet recommendations using available yarn anyway?", default=False
+    )
+    if proceed:
+        return {"force_recommend": True}
+    return {
+        "force_recommend": False,
+        "formatted_output": (
+            "No recommendations generated."
+            " Try a different goal or add yarn to your stash."
+        ),
+    }
 
 
 class _RecommendationList(BaseModel):
