@@ -167,6 +167,25 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
     return {"filtered_stash": filtered[:20]}
 
 
+def assess_filter_quality(state: GraphState) -> dict[str, Any]:
+    """Assess whether filtered_stash is sufficient to support recommendations.
+
+    Sets filter_confidence to 'low' if the filtered stash is empty, or if total
+    available yardage is clearly insufficient for a sweater-scale goal (< 500 yards).
+    """
+    filtered = state["filtered_stash"]
+    if not filtered:
+        return {"filter_confidence": "low"}
+    total_yards = sum(i.yards_total for i in filtered)
+    goal = (state["user_goal"] or "").lower()
+    is_sweater_goal = any(
+        re.search(r"\b" + g + r"\b", goal) is not None for g in _SWEATER_GARMENTS
+    )
+    if is_sweater_goal and total_yards < 500:
+        return {"filter_confidence": "low"}
+    return {"filter_confidence": "high"}
+
+
 class _RecommendationList(BaseModel):
     """Wrapper model for structured LLM output — a list of exactly 3 recommendations."""
 

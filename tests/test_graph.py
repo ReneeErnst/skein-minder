@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from skeinminder.graph.state import Recommendation
+from skeinminder.graph.state import Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
     StashItem,
@@ -160,3 +160,94 @@ def test_graph_stash_first_routes_and_formats(
     assert result["mode"] == "stash_first"
     assert result["recommendations"] is not None
     assert "Project 1" in result["formatted_output"]
+
+
+# --- assess_filter_quality ---
+
+
+def test_assess_filter_quality_low_when_filtered_stash_empty() -> None:
+    from skeinminder.graph.nodes import assess_filter_quality
+    from skeinminder.graph.state import GraphState
+
+    state = GraphState(
+        user_input="I want a cardigan",
+        mode="project_first",
+        user_goal="I want a cardigan",
+        stash_filter=None,
+        normalized_stash=[],
+        filtered_stash=[],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
+    )
+    result = assess_filter_quality(state)
+    assert result["filter_confidence"] == "low"
+
+
+def test_assess_filter_quality_low_when_sweater_goal_has_insufficient_yards() -> None:
+    from skeinminder.graph.nodes import assess_filter_quality
+    from skeinminder.graph.state import GraphState
+
+    small_item = _make_item(stash_id=1, yards_total=300.0)
+    state = GraphState(
+        user_input="I want a cardigan",
+        mode="project_first",
+        user_goal="I want a cardigan",
+        stash_filter=None,
+        normalized_stash=[small_item],
+        filtered_stash=[small_item],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
+    )
+    result = assess_filter_quality(state)
+    assert result["filter_confidence"] == "low"
+
+
+def test_assess_filter_quality_high_when_adequate_stash() -> None:
+    from skeinminder.graph.nodes import assess_filter_quality
+    from skeinminder.graph.state import GraphState
+
+    item = _make_item(stash_id=1, yards_total=1000.0)
+    state = GraphState(
+        user_input="I want a cardigan",
+        mode="project_first",
+        user_goal="I want a cardigan",
+        stash_filter=None,
+        normalized_stash=[item],
+        filtered_stash=[item],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
+    )
+    result = assess_filter_quality(state)
+    assert result["filter_confidence"] == "high"
+
+
+def test_assess_filter_quality_high_for_stash_first_mode() -> None:
+    from skeinminder.graph.nodes import assess_filter_quality
+    from skeinminder.graph.state import GraphState
+
+    item = _make_item(stash_id=1, yards_total=400.0)
+    state = GraphState(
+        user_input="Use my worsted wool",
+        mode="stash_first",
+        user_goal=None,
+        stash_filter=StashFilter(weight=WeightCategory.WORSTED),
+        normalized_stash=[item],
+        filtered_stash=[item],
+        recommendations=None,
+        requires_approval=False,
+        formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
+    )
+    result = assess_filter_quality(state)
+    # stash_first has no user_goal → not a sweater goal → yardage check skipped → high
+    assert result["filter_confidence"] == "high"
