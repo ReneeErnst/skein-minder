@@ -13,8 +13,10 @@ from pydantic import BaseModel
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import (
     MatchScore,
+    ProjectQuantity,
     StashItem,
     WeightCategory,
+    fiber_suitability,
     weight_match,
 )
 
@@ -56,6 +58,17 @@ def _extract_yards(text: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+def _extract_garment_type(goal: str) -> str | None:
+    """Return the first garment keyword from _SWEATER_GARMENTS found in goal, or None.
+
+    Returns None if no garment keyword is present.
+    """
+    for garment in _SWEATER_GARMENTS:
+        if re.search(r"\b" + garment + r"\b", goal) is not None:
+            return garment
+    return None
+
+
 def supervisor(state: GraphState) -> dict[str, Any]:
     """Deterministically classify mode and populate user_goal or stash_filter.
 
@@ -81,24 +94,32 @@ def supervisor(state: GraphState) -> dict[str, Any]:
 
 
 def project_first_filter(state: GraphState) -> dict[str, Any]:
-    """Filter stash by weight match and project quantity, capped at 20 items.
+    """Filter stash for project-first mode, capped at 20 items.
 
-    Excludes weight mismatches when a weight keyword is present in the goal. Excludes
-    scrap-quantity items when the goal mentions a sweater-scale garment. Results are
-    sorted by yards_total descending.
+    Excludes: weaving yarn; weight mismatches when a weight keyword is present;
+    non-sweater-quantity items when a sweater-scale garment is mentioned;
+    fiber mismatches for the detected garment type. Sorts by yards_total descending.
     """
     stash = state["normalized_stash"]
     goal = (state["user_goal"] or "").lower()
     weight = _extract_weight(goal)
-    is_sweater_goal = any(
-        re.search(r"\b" + g + r"\b", goal) is not None for g in _SWEATER_GARMENTS
-    )
+    garment_type = _extract_garment_type(goal)
 
     filtered: list[StashItem] = []
     for item in stash:
+        if item.is_weaving_yarn:
+            continue
         if weight is not None and weight_match(item, weight) == MatchScore.MISMATCH:
             continue
-        if is_sweater_goal and item.project_quantity.value == "scrap":
+        if (
+            garment_type is not None
+            and item.project_quantity != ProjectQuantity.SWEATER
+        ):
+            continue
+        if (
+            garment_type
+            and fiber_suitability(item, garment_type) == MatchScore.MISMATCH
+        ):
             continue
         filtered.append(item)
 

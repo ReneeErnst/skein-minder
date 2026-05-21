@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from skeinminder.graph.nodes import project_first_filter, stash_first_filter
 from skeinminder.graph.state import GraphState, StashFilter
 from skeinminder.ravelry.normalizer import (
@@ -16,6 +18,8 @@ def _make_item(
     yards_total: float = 1000.0,
     color_family: str | None = None,
     project_quantity: ProjectQuantity = ProjectQuantity.SWEATER,
+    fiber: list[str] | None = None,
+    is_weaving_yarn: bool = False,
 ) -> StashItem:
     return StashItem(
         stash_id=stash_id,
@@ -23,7 +27,7 @@ def _make_item(
         yarn_name="Test Yarn",
         colorway=None,
         weight_category=weight,
-        fiber=["Wool"],
+        fiber=fiber if fiber is not None else ["Wool"],
         color_family=color_family,
         skeins=5.0,
         yards_per_skein=yards_total / 5.0,
@@ -31,6 +35,7 @@ def _make_item(
         grams_total=None,
         notes=None,
         project_quantity=project_quantity,
+        is_weaving_yarn=is_weaving_yarn,
     )
 
 
@@ -58,9 +63,7 @@ def _make_state(
 # --- project_first_filter ---
 
 
-def test_project_first_filter_no_weight_returns_all_non_scrap_for_sweater_goal() -> (
-    None
-):
+def test_project_first_filter_requires_sweater_quantity_for_sweater_goals() -> None:
     items = [
         _make_item(stash_id=1, project_quantity=ProjectQuantity.SWEATER),
         _make_item(stash_id=2, project_quantity=ProjectQuantity.ACCESSORY),
@@ -71,8 +74,8 @@ def test_project_first_filter_no_weight_returns_all_non_scrap_for_sweater_goal()
     )
     ids = [i.stash_id for i in result["filtered_stash"]]
     assert 1 in ids
-    assert 2 in ids
-    assert 3 not in ids  # scraps excluded for sweater goals
+    assert 2 not in ids  # accessory excluded for sweater-scale goals
+    assert 3 not in ids  # scrap excluded for sweater-scale goals
 
 
 def test_project_first_filter_weight_excludes_mismatches() -> None:
@@ -99,6 +102,61 @@ def test_project_first_filter_includes_adjacent_weight() -> None:
     ids = [i.stash_id for i in result["filtered_stash"]]
     assert 1 in ids
     assert 2 in ids
+
+
+def test_project_first_filter_non_sweater_goal_passes_accessory() -> None:
+    items = [
+        _make_item(stash_id=1, project_quantity=ProjectQuantity.SWEATER),
+        _make_item(stash_id=2, project_quantity=ProjectQuantity.ACCESSORY),
+    ]
+    result = project_first_filter(_make_state(stash=items, user_goal="I want a hat"))
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 in ids  # accessory passes for non-sweater goals
+
+
+def test_project_first_filter_excludes_weaving_yarn() -> None:
+    items = [
+        _make_item(stash_id=1, is_weaving_yarn=False),
+        _make_item(stash_id=2, is_weaving_yarn=True),
+    ]
+    result = project_first_filter(
+        _make_state(stash=items, user_goal="I want a cardigan")
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 not in ids
+
+
+def test_project_first_filter_excludes_fiber_mismatch_for_garment_goal() -> None:
+    from skeinminder.ravelry.normalizer import MatchScore
+
+    items = [
+        _make_item(stash_id=1, fiber=["Wool"]),
+        _make_item(stash_id=2, fiber=["Silk"]),
+    ]
+    with patch("skeinminder.graph.nodes.fiber_suitability") as mock_fs:
+        mock_fs.side_effect = lambda item, garment: (
+            MatchScore.EXACT if "Wool" in item.fiber else MatchScore.MISMATCH
+        )
+        result = project_first_filter(
+            _make_state(stash=items, user_goal="I want a cardigan")
+        )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 not in ids
+
+
+def test_project_first_filter_passes_fiber_adjacent_for_garment_goal() -> None:
+    # Silk is ADJACENT (not MISMATCH) for cardigan in the real fiber rules
+    items = [
+        _make_item(stash_id=1, fiber=["Silk"]),
+    ]
+    result = project_first_filter(
+        _make_state(stash=items, user_goal="I want a cardigan")
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
 
 
 def test_project_first_filter_caps_at_20_items() -> None:
