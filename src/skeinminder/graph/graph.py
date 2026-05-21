@@ -20,6 +20,8 @@ def build_graph() -> CompiledStateGraph[GraphState]:
     workflow.add_node("supervisor", nodes.supervisor)
     workflow.add_node("project_first_filter", nodes.project_first_filter)
     workflow.add_node("stash_first_filter", nodes.stash_first_filter)
+    workflow.add_node("assess_filter_quality", nodes.assess_filter_quality)
+    workflow.add_node("low_confidence_output", nodes.low_confidence_output)
     workflow.add_node("recommend", nodes.recommend)
     workflow.add_node("format_output", nodes.format_output)
 
@@ -32,8 +34,18 @@ def build_graph() -> CompiledStateGraph[GraphState]:
             "stash_first": "stash_first_filter",
         },
     )
-    workflow.add_edge("project_first_filter", "recommend")
-    workflow.add_edge("stash_first_filter", "recommend")
+    workflow.add_edge("project_first_filter", "assess_filter_quality")
+    workflow.add_edge("stash_first_filter", "assess_filter_quality")
+    workflow.add_conditional_edges(
+        "assess_filter_quality",
+        lambda state: state["filter_confidence"],
+        {"high": "recommend", "low": "low_confidence_output"},
+    )
+    workflow.add_conditional_edges(
+        "low_confidence_output",
+        lambda state: "recommend" if state["force_recommend"] else END,
+        {"recommend": "recommend", END: END},
+    )
     workflow.add_edge("recommend", "format_output")
     workflow.add_edge("format_output", END)
 

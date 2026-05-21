@@ -48,7 +48,10 @@ def test_recommend_fixture_flag_returns_output() -> None:
         for i in range(1, 4)
     ]
 
-    with patch("skeinminder.graph.nodes.recommend") as mock_rec:
+    with (
+        patch("skeinminder.graph.nodes.recommend") as mock_rec,
+        patch("click.confirm", return_value=True),
+    ):
         mock_rec.return_value = {"recommendations": canned}
         runner = CliRunner()
         result = runner.invoke(

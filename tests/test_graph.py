@@ -106,7 +106,11 @@ def test_graph_project_first_routes_and_formats(
 
     canned = _canned_recommendations(stash_id=normalized_stash[0].stash_id)
 
-    with patch("skeinminder.graph.nodes.recommend") as mock_rec:
+    with (
+        patch("skeinminder.graph.nodes.recommend") as mock_rec,
+        patch("click.confirm", return_value=True),
+        patch("click.echo"),
+    ):
         mock_rec.return_value = {"recommendations": canned}
         graph = build_graph()
         result = graph.invoke(
@@ -306,5 +310,81 @@ def test_low_confidence_output_user_declines() -> None:
     with patch("click.confirm", return_value=False), patch("click.echo"):
         result = low_confidence_output(state)
 
+    assert result["force_recommend"] is False
+    assert "No recommendations generated" in result["formatted_output"]
+
+
+# --- low-confidence integration path ---
+
+
+def test_graph_low_confidence_user_confirms() -> None:
+    from unittest.mock import patch
+
+    from skeinminder.graph.graph import build_graph
+    from skeinminder.graph.state import Recommendation
+
+    canned = [
+        Recommendation(
+            title=f"Project {i}",
+            rationale="Works with available yarn.",
+            risks=["Check gauge"],
+            yarn_candidate_ids=[],
+        )
+        for i in range(1, 4)
+    ]
+
+    with (
+        patch("skeinminder.graph.nodes.recommend") as mock_rec,
+        patch("click.confirm", return_value=True),
+        patch("click.echo"),
+    ):
+        mock_rec.return_value = {"recommendations": canned}
+        graph = build_graph()
+        result = graph.invoke(
+            {
+                "user_input": "I want a cardigan",
+                "normalized_stash": [],  # empty → filtered_stash = [] → low confidence
+                "filtered_stash": [],
+                "mode": "",
+                "user_goal": None,
+                "stash_filter": None,
+                "recommendations": None,
+                "requires_approval": False,
+                "formatted_output": None,
+                "filter_confidence": "",
+                "force_recommend": False,
+            }
+        )
+
+    assert result["filter_confidence"] == "low"
+    assert result["force_recommend"] is True
+    assert result["recommendations"] is not None
+    assert len(result["recommendations"]) == 3
+
+
+def test_graph_low_confidence_user_declines() -> None:
+    from unittest.mock import patch
+
+    from skeinminder.graph.graph import build_graph
+
+    with patch("click.confirm", return_value=False), patch("click.echo"):
+        graph = build_graph()
+        result = graph.invoke(
+            {
+                "user_input": "I want a cardigan",
+                "normalized_stash": [],
+                "filtered_stash": [],
+                "mode": "",
+                "user_goal": None,
+                "stash_filter": None,
+                "recommendations": None,
+                "requires_approval": False,
+                "formatted_output": None,
+                "filter_confidence": "",
+                "force_recommend": False,
+            }
+        )
+
+    assert result["filter_confidence"] == "low"
     assert result["force_recommend"] is False
     assert "No recommendations generated" in result["formatted_output"]
