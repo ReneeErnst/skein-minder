@@ -60,6 +60,8 @@ def test_format_output_renders_all_recommendations() -> None:
         recommendations=recs,
         requires_approval=False,
         formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
     )
 
     result = format_output(state)
@@ -86,6 +88,8 @@ def test_format_output_handles_empty_recommendations() -> None:
         recommendations=[],
         requires_approval=False,
         formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
     )
 
     result = format_output(state)
@@ -116,6 +120,8 @@ def test_graph_project_first_routes_and_formats(
                 "recommendations": None,
                 "requires_approval": False,
                 "formatted_output": None,
+                "filter_confidence": "",
+                "force_recommend": False,
             }
         )
 
@@ -146,6 +152,8 @@ def test_graph_stash_first_routes_and_formats(
                 "recommendations": None,
                 "requires_approval": False,
                 "formatted_output": None,
+                "filter_confidence": "",
+                "force_recommend": False,
             }
         )
 

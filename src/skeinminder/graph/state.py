@@ -40,3 +40,5 @@ class GraphState(TypedDict):
     recommendations: list[Recommendation] | None
     requires_approval: bool  # Phase 5 stub: set True before write operations
     formatted_output: str | None
+    filter_confidence: Literal["high", "low", ""]
+    force_recommend: bool

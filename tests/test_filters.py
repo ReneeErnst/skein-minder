@@ -50,6 +50,8 @@ def _make_state(
         recommendations=None,
         requires_approval=False,
         formatted_output=None,
+        filter_confidence="",
+        force_recommend=False,
     )
 
 

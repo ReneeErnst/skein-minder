@@ -53,6 +53,8 @@ def recommend(goal: str, fixture: bool) -> None:
             "recommendations": None,
             "requires_approval": False,
             "formatted_output": None,
+            "filter_confidence": "",
+            "force_recommend": False,
         }
     )
     output = result.get("formatted_output") or "No recommendations generated."
