@@ -260,6 +260,17 @@ def test_stash_first_filter_by_max_yards() -> None:
     assert 2 not in ids
 
 
+def test_stash_first_filter_excludes_weaving_yarn() -> None:
+    items = [
+        _make_item(stash_id=1, is_weaving_yarn=False),
+        _make_item(stash_id=2, is_weaving_yarn=True),
+    ]
+    result = stash_first_filter(_make_state(stash=items, stash_filter=StashFilter()))
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 not in ids
+
+
 def test_project_first_filter_with_real_stash(
     normalized_stash: list[StashItem],
 ) -> None:

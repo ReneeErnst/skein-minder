@@ -136,13 +136,13 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
-    Applies filters in order: specific_stash_id, weight, min_yards, max_yards,
-    color_family. Results are sorted by yards_total descending.
+    Excludes weaving yarn, then applies filters in order: specific_stash_id, weight,
+    min_yards, max_yards, color_family. Results are sorted by yards_total descending.
     """
     stash = state["normalized_stash"]
     f = state["stash_filter"]
 
-    filtered = list(stash)
+    filtered = [i for i in stash if not i.is_weaving_yarn]
 
     if f is not None:
         if f.specific_stash_id is not None:
