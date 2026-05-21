@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from enum import Enum
 
 from pydantic import BaseModel
@@ -47,6 +48,17 @@ def weight_category_from_string(value: str | None) -> WeightCategory:
     if not value:
         return WeightCategory.UNKNOWN
     return _WEIGHT_MAP.get(value.lower().strip(), WeightCategory.UNKNOWN)
+
+
+_WEAVING_YARN_RE = re.compile(r"\b\d+/\d+\b")
+
+
+def is_weaving_yarn(yarn_name: str) -> bool:
+    """Return True if the name matches count/ply weaving yarn convention.
+
+    Examples: '16/2 Bamboo', '8/4 Cotton'.
+    """
+    return bool(_WEAVING_YARN_RE.search(yarn_name))
 
 
 class ProjectQuantity(str, Enum):
@@ -106,6 +118,7 @@ class StashItem(BaseModel):
     grams_total: float | None
     notes: str | None
     project_quantity: ProjectQuantity
+    is_weaving_yarn: bool = False
 
 
 from skeinminder.ravelry.exceptions import NormalizationError  # noqa: E402
@@ -149,11 +162,12 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
     yards_total = skeins * yards_per_skein
     grams_total = skeins * grams_per_skein if grams_per_skein is not None else None
+    yarn_name_str = raw.yarn_name or (yarn.name or "Unknown")
 
     return StashItem(
         stash_id=raw.id,
         brand=brand,
-        yarn_name=raw.yarn_name or (yarn.name or "Unknown"),
+        yarn_name=yarn_name_str,
         colorway=raw.colorway_name,
         weight_category=weight_category,
         fiber=fibers,
@@ -164,6 +178,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
         grams_total=grams_total,
         notes=raw.notes,
         project_quantity=project_quantity_from_yards(yards_total, weight_category),
+        is_weaving_yarn=is_weaving_yarn(yarn_name_str),
     )
 
 

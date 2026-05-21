@@ -19,6 +19,7 @@ from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
     StashItem,
     WeightCategory,
+    is_weaving_yarn,
     normalize_stash,
     normalize_stash_item,
     project_quantity_from_yards,
@@ -87,6 +88,33 @@ def test_weight_order_lightest_to_heaviest() -> None:
     lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
     fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
     assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
+
+
+@pytest.mark.parametrize(
+    "yarn_name,expected",
+    [
+        ("16/2 Bamboo", True),
+        ("8/4 Cotton", True),
+        ("10/2 Mercerised Cotton", True),
+        ("Cascade 220", False),
+        ("Malabrigo Rios", False),
+        ("", False),
+    ],
+)
+def test_is_weaving_yarn(yarn_name: str, expected: bool) -> None:
+    assert is_weaving_yarn(yarn_name) == expected
+
+
+def test_normalize_stash_item_sets_is_weaving_yarn_true() -> None:
+    raw = _make_raw_item(yarn_name="16/2 Bamboo")
+    item = normalize_stash_item(raw)
+    assert item.is_weaving_yarn is True
+
+
+def test_normalize_stash_item_sets_is_weaving_yarn_false() -> None:
+    raw = _make_raw_item(yarn_name="Cascade 220")
+    item = normalize_stash_item(raw)
+    assert item.is_weaving_yarn is False
 
 
 @pytest.mark.parametrize(
