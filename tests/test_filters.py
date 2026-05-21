@@ -5,6 +5,7 @@ from unittest.mock import patch
 from skeinminder.graph.nodes import project_first_filter, stash_first_filter
 from skeinminder.graph.state import GraphState, StashFilter
 from skeinminder.ravelry.normalizer import (
+    MatchScore,
     ProjectQuantity,
     StashItem,
     WeightCategory,
@@ -128,9 +129,19 @@ def test_project_first_filter_excludes_weaving_yarn() -> None:
     assert 2 not in ids
 
 
-def test_project_first_filter_excludes_fiber_mismatch_for_garment_goal() -> None:
-    from skeinminder.ravelry.normalizer import MatchScore
+def test_project_first_filter_excludes_weaving_yarn_for_non_sweater_goal() -> None:
+    # Weaving yarn is excluded unconditionally, even without a sweater-scale garment.
+    items = [
+        _make_item(stash_id=1, is_weaving_yarn=False),
+        _make_item(stash_id=2, is_weaving_yarn=True),
+    ]
+    result = project_first_filter(_make_state(stash=items, user_goal="I want a scarf"))
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert 1 in ids
+    assert 2 not in ids
 
+
+def test_project_first_filter_excludes_fiber_mismatch_for_garment_goal() -> None:
     items = [
         _make_item(stash_id=1, fiber=["Wool"]),
         _make_item(stash_id=2, fiber=["Silk"]),

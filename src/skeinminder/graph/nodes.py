@@ -40,9 +40,14 @@ _WEIGHT_KEYWORDS: list[tuple[str, WeightCategory]] = [
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
-_SWEATER_GARMENTS = frozenset(
-    {"cardigan", "sweater", "pullover", "vest", "coat", "jumper"}
-)
+_SWEATER_GARMENTS: list[str] = [
+    "cardigan",
+    "pullover",
+    "sweater",
+    "jumper",
+    "vest",
+    "coat",
+]
 
 
 def _extract_weight(text: str) -> WeightCategory | None:
@@ -118,7 +123,7 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
         ):
             continue
         if (
-            garment_type
+            garment_type is not None
             and fiber_suitability(item, garment_type) == MatchScore.MISMATCH
         ):
             continue
