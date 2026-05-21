@@ -66,7 +66,7 @@ src/skeinminder/
   graph/
     state.py       # GraphState (TypedDict), StashFilter, Recommendation
     graph.py       # build_graph() — compiles the LangGraph StateGraph
-    nodes.py       # supervisor, project_first_filter, stash_first_filter, recommend, format_output
+    nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output
   config.py        # get_ravelry_credentials() from .env
   cli.py           # `skeinminder stash` and `skeinminder recommend`
 tests/
