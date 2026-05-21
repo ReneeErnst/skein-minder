@@ -105,16 +105,19 @@ def test_is_weaving_yarn(yarn_name: str, expected: bool) -> None:
     assert is_weaving_yarn(yarn_name) == expected
 
 
-def test_normalize_stash_item_sets_is_weaving_yarn_true() -> None:
-    raw = _make_raw_item(yarn_name="16/2 Bamboo")
+@pytest.mark.parametrize(
+    "yarn_name,expected",
+    [
+        ("16/2 Bamboo", True),
+        ("Cascade 220", False),
+    ],
+)
+def test_normalize_stash_item_sets_is_weaving_yarn(
+    yarn_name: str, expected: bool
+) -> None:
+    raw = _make_raw_item(yarn_name=yarn_name)
     item = normalize_stash_item(raw)
-    assert item.is_weaving_yarn is True
-
-
-def test_normalize_stash_item_sets_is_weaving_yarn_false() -> None:
-    raw = _make_raw_item(yarn_name="Cascade 220")
-    item = normalize_stash_item(raw)
-    assert item.is_weaving_yarn is False
+    assert item.is_weaving_yarn is expected
 
 
 @pytest.mark.parametrize(
