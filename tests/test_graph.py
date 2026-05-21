@@ -108,7 +108,9 @@ def test_graph_project_first_routes_and_formats(
 
     with (
         patch("skeinminder.graph.nodes.recommend") as mock_rec,
-        patch("click.confirm", return_value=True),
+        patch(
+            "click.confirm", return_value=True
+        ),  # fixture stash has no sweater-qty yarn → low-confidence path
         patch("click.echo"),
     ):
         mock_rec.return_value = {"recommendations": canned}
