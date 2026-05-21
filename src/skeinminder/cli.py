@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 
 from skeinminder.ravelry.normalizer import ProjectQuantity, StashItem, normalize_stash
+
+load_dotenv()  # Load environment variables from .env file if present
 
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "tests" / "fixtures"
 
