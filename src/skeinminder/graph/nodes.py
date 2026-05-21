@@ -6,6 +6,7 @@ import os
 import re
 from typing import Any
 
+import click  # noqa: F401
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
