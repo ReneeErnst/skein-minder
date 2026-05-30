@@ -497,7 +497,7 @@ All exit criteria met. Branch: `phase2b`.
 
 ---
 
-### Phase 3b — Recommendation quality improvements
+### Phase 3b — Recommendation quality improvements ✅ COMPLETE
 
 Goal: fix known domain-correctness problems in the phase 3 graph before moving to pattern integration.
 
@@ -521,7 +521,7 @@ supervisor → filter → assess_filter_quality →
            (user declines) → END
 ```
 
-### Phase 3c — Code quality review
+### Phase 3c — Code quality review ✅ COMPLETE
 
 Goal: audit the full codebase for Python best practices before moving to pattern integration.
 
@@ -535,7 +535,30 @@ Scope:
 
 No new features. No spec needed — implement as a single PR with a checklist commit message.
 
-### Phase 4 — Pattern integration
+### Phase 4 — Observability (Langfuse)
+
+Goal: wire in self-hosted Langfuse tracing so every graph run is visible as a structured trace — nodes, LLM calls, filter counts, token usage, and latency — without relying on a third-party SaaS.
+
+Key decisions:
+- Self-hosted Langfuse via Docker Compose (local and demo-friendly).
+- Full SDK integration with `@observe` decorators on each node, not just the LangChain callback. This makes filter decisions and state transitions visible as spans, not just the LLM call.
+- Langfuse replaces LangSmith vars in `.env.example`.
+
+Spec: `docs/superpowers/specs/YYYY-MM-DD-phase4-observability.md` (to be written)
+
+### Phase 5 — Evaluation
+
+Goal: build a two-layer eval suite. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (groundedness, relevance).
+
+Key decisions:
+- Golden dataset of fixture-based inputs with expected properties, stored as JSON in `tests/fixtures/eval/`.
+- Deterministic assertions run as `@pytest.mark.eval` tests (excluded from CI by default, runnable with `uv run pytest -m eval`).
+- LLM-as-judge scoring runs via `skeinminder eval` CLI command and logs results to Langfuse.
+- Langfuse evaluators configured to score new traces automatically — the production monitoring analog.
+
+Spec: `docs/superpowers/specs/YYYY-MM-DD-phase5-evaluation.md` (to be written)
+
+### Phase 6 — Pattern integration
 
 Goal: connect recommendations to real Ravelry patterns. Output is yarn+pattern pairs, not abstract project ideas.
 
@@ -562,7 +585,7 @@ Tasks:
 - Update `format_output`: show pattern title and URL alongside yarn and rationale.
 - Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
 
-### Phase 5 — Human approval checkpoints
+### Phase 7 — Human approval checkpoints
 
 Goal: demonstrate safe agentic control before any write operations.
 
@@ -575,11 +598,11 @@ Tasks:
 
 Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
 
-### Phase 6 — Ravelry project write-back
+### Phase 8 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
-With Phase 4 complete, write-back now has a real pattern reference to include alongside the yarn link.
+With Phase 6 complete, write-back now has a real pattern reference to include alongside the yarn link.
 
 Tasks:
 - Add `draft_ravelry_project` and `create_ravelry_project` tools.
@@ -589,13 +612,13 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 7 — External productivity integration (tentative)
+### Phase 9 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
-Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 6 before committing to Phase 7.
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 8 before committing to Phase 9.
 
-### Phase 8 — Demo polish
+### Phase 10 — Demo polish
 
 Deterministic demo data, fixture mode toggle, sample prompt scripts, screenshots/GIFs, architecture diagram, known-limitations section.
 
