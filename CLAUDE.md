@@ -76,11 +76,20 @@ tests/
 
 ## Graph architecture
 
-The LangGraph pipeline: `supervisor → [project_first_filter | stash_first_filter] → recommend → format_output`
+The LangGraph pipeline:
+
+```
+supervisor → [project_first_filter | stash_first_filter]
+           → assess_filter_quality
+           → high: recommend → format_output
+             low:  low_confidence_output → (force_recommend?) recommend | END
+```
 
 - **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs.
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords; both sort descending by yards.
-- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt and returns exactly 3 `Recommendation` objects via structured output.
+- **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `recommend` or `low_confidence_output` accordingly.
+- **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
+- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt and returns up to 3 `Recommendation` objects via structured output.
 - **format_output**: renders recommendations as a plain-text CLI report, resolving stash IDs back to yarn names.
 
 In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the node function itself, not the LLM client — so the full graph routing logic is exercised without live API calls.

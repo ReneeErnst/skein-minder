@@ -50,6 +50,17 @@ def weight_category_from_string(value: str | None) -> WeightCategory:
     return _WEIGHT_MAP.get(value.lower().strip(), WeightCategory.UNKNOWN)
 
 
+def find_weight_in_text(text: str) -> WeightCategory | None:
+    """Find the first weight keyword in free text; longest keyword wins.
+
+    Returns None if no weight keyword is found.
+    """
+    for keyword in sorted(_WEIGHT_MAP, key=len, reverse=True):
+        if keyword in text:
+            return _WEIGHT_MAP[keyword]
+    return None
+
+
 _WEAVING_YARN_RE = re.compile(r"\b\d+/\d+\b")
 
 

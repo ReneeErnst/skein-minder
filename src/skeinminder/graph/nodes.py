@@ -16,27 +16,10 @@ from skeinminder.ravelry.normalizer import (
     MatchScore,
     ProjectQuantity,
     StashItem,
-    WeightCategory,
     fiber_suitability,
+    find_weight_in_text,
     weight_match,
 )
-
-# Sorted longest-first so multi-word entries like "light fingering" match
-# before their single-word substrings like "fingering".
-_WEIGHT_KEYWORDS: list[tuple[str, WeightCategory]] = [
-    ("light fingering", WeightCategory.LIGHT_FINGERING),
-    ("super bulky", WeightCategory.SUPER_BULKY),
-    ("thread", WeightCategory.THREAD),
-    ("cobweb", WeightCategory.COBWEB),
-    ("lace", WeightCategory.LACE),
-    ("fingering", WeightCategory.FINGERING),
-    ("sock", WeightCategory.FINGERING),
-    ("sport", WeightCategory.SPORT),
-    ("dk", WeightCategory.DK),
-    ("worsted", WeightCategory.WORSTED),
-    ("aran", WeightCategory.ARAN),
-    ("bulky", WeightCategory.BULKY),
-]
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
@@ -48,14 +31,6 @@ _SWEATER_GARMENTS: list[str] = [
     "vest",
     "coat",
 ]
-
-
-def _extract_weight(text: str) -> WeightCategory | None:
-    """Return the first WeightCategory keyword found in text, or None."""
-    for keyword, weight in _WEIGHT_KEYWORDS:
-        if keyword in text:
-            return weight
-    return None
 
 
 def _extract_yards(text: str) -> float | None:
@@ -91,7 +66,7 @@ def supervisor(state: GraphState) -> dict[str, Any]:
 
     if mode == "stash_first":
         stash_filter = StashFilter(
-            weight=_extract_weight(text),
+            weight=find_weight_in_text(text),
             min_yards=_extract_yards(text),
         )
         return {"mode": mode, "user_goal": None, "stash_filter": stash_filter}
@@ -108,7 +83,7 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     """
     stash = state["normalized_stash"]
     goal = (state["user_goal"] or "").lower()
-    weight = _extract_weight(goal)
+    weight = find_weight_in_text(goal)
     garment_type = _extract_garment_type(goal)
 
     filtered: list[StashItem] = []
@@ -141,27 +116,31 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """
     stash = state["normalized_stash"]
     f = state["stash_filter"]
+    cf = (
+        f.color_family.lower() if f is not None and f.color_family is not None else None
+    )
 
-    filtered = [i for i in stash if not i.is_weaving_yarn]
-
-    if f is not None:
-        if f.specific_stash_id is not None:
-            filtered = [i for i in filtered if i.stash_id == f.specific_stash_id]
-        if f.weight is not None:
-            filtered = [
-                i for i in filtered if weight_match(i, f.weight) != MatchScore.MISMATCH
-            ]
-        if f.min_yards is not None:
-            filtered = [i for i in filtered if i.yards_total >= f.min_yards]
-        if f.max_yards is not None:
-            filtered = [i for i in filtered if i.yards_total <= f.max_yards]
-        if f.color_family is not None:
-            cf = f.color_family.lower()
-            filtered = [
-                i
-                for i in filtered
-                if i.color_family is not None and cf in i.color_family.lower()
-            ]
+    filtered: list[StashItem] = []
+    for item in stash:
+        if item.is_weaving_yarn:
+            continue
+        if f is not None:
+            if f.specific_stash_id is not None and item.stash_id != f.specific_stash_id:
+                continue
+            if (
+                f.weight is not None
+                and weight_match(item, f.weight) == MatchScore.MISMATCH
+            ):
+                continue
+            if f.min_yards is not None and item.yards_total < f.min_yards:
+                continue
+            if f.max_yards is not None and item.yards_total > f.max_yards:
+                continue
+            if cf is not None and (
+                item.color_family is None or cf not in item.color_family.lower()
+            ):
+                continue
+        filtered.append(item)
 
     filtered.sort(key=lambda i: i.yards_total, reverse=True)
     return {"filtered_stash": filtered[:20]}
@@ -178,9 +157,7 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
         return {"filter_confidence": "low"}
     total_yards = sum(i.yards_total for i in filtered)
     goal = (state["user_goal"] or "").lower()
-    is_sweater_goal = any(
-        re.search(r"\b" + g + r"\b", goal) is not None for g in _SWEATER_GARMENTS
-    )
+    is_sweater_goal = _extract_garment_type(goal) is not None
     if is_sweater_goal and total_yards < 500:
         return {"filter_confidence": "low"}
     return {"filter_confidence": "high"}
@@ -227,7 +204,7 @@ def low_confidence_output(state: GraphState) -> dict[str, Any]:
 
 
 class _RecommendationList(BaseModel):
-    """Wrapper model for structured LLM output — a list of exactly 3 recommendations."""
+    """Wrapper model for structured LLM output — a list of up to 3 recommendations."""
 
     recommendations: list[Recommendation]
 
@@ -312,7 +289,7 @@ def format_output(state: GraphState) -> dict[str, Any]:
     Resolves yarn_candidate_ids back to yarn names using normalized_stash.
     """
     recs = state["recommendations"] or []
-    stash_by_id = {item.stash_id: item for item in state["normalized_stash"]}
+    stash_by_id = {item.stash_id: item for item in state["filtered_stash"]}
 
     lines: list[str] = ["Project recommendations", "─" * 40]
     for i, rec in enumerate(recs, 1):

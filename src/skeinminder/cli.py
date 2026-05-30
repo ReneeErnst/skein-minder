@@ -70,19 +70,19 @@ def _load_stash(use_fixture: bool) -> list[StashItem]:
         data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
         raw_list = RawStashListResponse.model_validate(data)
         return normalize_stash(raw_list.stash)
-    else:
-        from skeinminder.config import ConfigError, get_ravelry_credentials
-        from skeinminder.ravelry.client import RavelryClient
 
-        try:
-            username, password = get_ravelry_credentials()
-        except ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
+    from skeinminder.config import ConfigError, get_ravelry_credentials
+    from skeinminder.ravelry.client import RavelryClient
 
-        with RavelryClient(username=username, password=password) as client:
-            user = client.get_current_user()
-            raw_items = client.get_stash_list(user.username)
-        return normalize_stash(raw_items)
+    try:
+        username, password = get_ravelry_credentials()
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    with RavelryClient(username=username, password=password) as client:
+        user = client.get_current_user()
+        raw_items = client.get_stash_list(user.username)
+    return normalize_stash(raw_items)
 
 
 def _format_item(item: StashItem) -> str:
