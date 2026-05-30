@@ -368,6 +368,8 @@ The CLI is the right demo vehicle for a technical portfolio project. The natural
 
 The path from CLI to web is a thin layer once the graph exists: a FastAPI endpoint wraps the graph, a simple React front end handles input and card rendering. The LangGraph backend doesn't change.
 
+**Observability note for FastAPI:** When the graph moves to a web service, Langfuse trace IDs must be correlated to HTTP request IDs. Set the trace ID to the request ID (e.g., from a `X-Request-ID` header) via `langfuse_context.update_current_trace(id=request_id)` inside the `@observe`-decorated endpoint handler. This makes traces directly linkable from logs. The CLI implementation in Phase 4 does not require this — it is a FastAPI-specific concern.
+
 Longer-term possibilities worth noting: a Discord or Slack bot that lives in knitting community servers (there are large active knitting Discords where a stash-aware bot would fit naturally), and a Ravelry-embedded panel if Ravelry ever opens extension support. Neither is a current requirement.
 
 ### LLM context window design constraint
