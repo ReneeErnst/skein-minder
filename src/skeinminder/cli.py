@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
+from langfuse.decorators import langfuse_context, observe
 
 from skeinminder.ravelry.normalizer import ProjectQuantity, StashItem, normalize_stash
 
@@ -40,9 +41,20 @@ def stash(fixture: bool) -> None:
 )
 def recommend(goal: str, fixture: bool) -> None:
     """Get project recommendations based on a goal or yarn description."""
+    stash = _load_stash(fixture)
+    output = _run_recommend(goal, stash)
+    click.echo(output)
+
+
+@observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
+def _run_recommend(goal: str, stash: list[StashItem]) -> str:
+    """Run the recommendation graph and return formatted output as a string."""
     from skeinminder.graph.graph import build_graph
 
-    stash = _load_stash(fixture)
+    langfuse_context.update_current_trace(
+        input={"user_goal": goal},
+        tags=["cli"],
+    )
     graph = build_graph()
     result = graph.invoke(
         {
@@ -59,8 +71,9 @@ def recommend(goal: str, fixture: bool) -> None:
             "force_recommend": False,
         }
     )
-    output = result.get("formatted_output") or "No recommendations generated."
-    click.echo(output)
+    output: str = result.get("formatted_output") or "No recommendations generated."
+    langfuse_context.update_current_trace(output={"formatted_output": output})
+    return output
 
 
 def _load_stash(use_fixture: bool) -> list[StashItem]:
