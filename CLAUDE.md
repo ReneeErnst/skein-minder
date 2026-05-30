@@ -98,6 +98,8 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 
 - Use `@pytest.mark.parametrize` whenever multiple tests call the same function with different inputs and assert the same shape of result. Collapse them into one parametrized test rather than writing individual named functions.
 - Keep tests as named functions when the setup or assertion structure differs meaningfully between cases — parametrize is for input variation, not behavioral variation.
+- When parametrized test data is complex or multi-field, extract it into a named list above the test — `SCENARIOS = [{"state": ..., "expected": ...}, ...]` — and pass each dict as a single `scenario` parameter. When each scenario is a single value, use `pytest.param(value, id="name")` directly; a one-field dict adds no value.
+- Use `pytest.param({...}, id="name")` when preserving a descriptive test node name matters for diagnosing failures. Plain dicts auto-generate `scenario0`, `scenario1`, etc., which is acceptable when the scenario content is self-evident from the dict.
 - Fixture files in `tests/fixtures/` should be small and representative (one or a few items per category), not exhaustive dumps. Full exports belong in gitignored files.
 
 ## Key design rules

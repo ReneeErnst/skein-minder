@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
     assess_filter_quality,
@@ -149,42 +151,43 @@ def test_graph_stash_first_routes_and_formats(
 
 # --- assess_filter_quality ---
 
-
-def test_assess_filter_quality_low_when_filtered_stash_empty() -> None:
-    result = assess_filter_quality(_make_state())
-    assert result["filter_confidence"] == "low"
-
-
-def test_assess_filter_quality_low_when_sweater_goal_has_insufficient_yards() -> None:
-    small_item = _make_item(stash_id=1, yards_total=300.0)
-    result = assess_filter_quality(
-        _make_state(normalized_stash=[small_item], filtered_stash=[small_item])
-    )
-    assert result["filter_confidence"] == "low"
-
-
-def test_assess_filter_quality_high_when_adequate_stash() -> None:
-    item = _make_item(stash_id=1, yards_total=1000.0)
-    result = assess_filter_quality(
-        _make_state(normalized_stash=[item], filtered_stash=[item])
-    )
-    assert result["filter_confidence"] == "high"
-
-
-def test_assess_filter_quality_high_for_stash_first_mode() -> None:
-    item = _make_item(stash_id=1, yards_total=400.0)
-    result = assess_filter_quality(
-        _make_state(
+ASSESS_FILTER_QUALITY_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "state": _make_state(),
+        "expected": "low",
+    },
+    {
+        "state": _make_state(
+            normalized_stash=[_make_item(stash_id=1, yards_total=300.0)],
+            filtered_stash=[_make_item(stash_id=1, yards_total=300.0)],
+        ),
+        "expected": "low",  # sweater goal + 300 yards < worsted threshold of 800
+    },
+    {
+        "state": _make_state(
+            normalized_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+            filtered_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+        ),
+        "expected": "high",
+    },
+    {
+        "state": _make_state(
             user_input="Use my worsted wool",
             mode="stash_first",
             user_goal=None,
             stash_filter=StashFilter(weight=WeightCategory.WORSTED),
-            normalized_stash=[item],
-            filtered_stash=[item],
-        )
-    )
-    # stash_first has no user_goal → not a sweater goal → yardage check skipped → high
-    assert result["filter_confidence"] == "high"
+            normalized_stash=[_make_item(stash_id=1, yards_total=400.0)],
+            filtered_stash=[_make_item(stash_id=1, yards_total=400.0)],
+        ),
+        "expected": "high",  # stash_first has no user_goal → yardage check skipped
+    },
+]
+
+
+@pytest.mark.parametrize("scenario", ASSESS_FILTER_QUALITY_SCENARIOS)
+def test_assess_filter_quality(scenario: dict[str, Any]) -> None:
+    result = assess_filter_quality(scenario["state"])
+    assert result["filter_confidence"] == scenario["expected"]
 
 
 # --- low_confidence_output ---

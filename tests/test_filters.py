@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from skeinminder.graph.nodes import project_first_filter, stash_first_filter
 from skeinminder.graph.state import GraphState, StashFilter
@@ -116,26 +119,19 @@ def test_project_first_filter_non_sweater_goal_passes_accessory() -> None:
     assert 2 in ids  # accessory passes for non-sweater goals
 
 
-def test_project_first_filter_excludes_weaving_yarn() -> None:
+@pytest.mark.parametrize(
+    "user_goal",
+    [
+        "I want a cardigan",
+        "I want a scarf",  # excluded unconditionally, not just for sweaters
+    ],
+)
+def test_project_first_filter_excludes_weaving_yarn(user_goal: str) -> None:
     items = [
         _make_item(stash_id=1, is_weaving_yarn=False),
         _make_item(stash_id=2, is_weaving_yarn=True),
     ]
-    result = project_first_filter(
-        _make_state(stash=items, user_goal="I want a cardigan")
-    )
-    ids = [i.stash_id for i in result["filtered_stash"]]
-    assert 1 in ids
-    assert 2 not in ids
-
-
-def test_project_first_filter_excludes_weaving_yarn_for_non_sweater_goal() -> None:
-    # Weaving yarn is excluded unconditionally, even without a sweater-scale garment.
-    items = [
-        _make_item(stash_id=1, is_weaving_yarn=False),
-        _make_item(stash_id=2, is_weaving_yarn=True),
-    ]
-    result = project_first_filter(_make_state(stash=items, user_goal="I want a scarf"))
+    result = project_first_filter(_make_state(stash=items, user_goal=user_goal))
     ids = [i.stash_id for i in result["filtered_stash"]]
     assert 1 in ids
     assert 2 not in ids
@@ -196,68 +192,62 @@ def test_stash_first_filter_no_filter_returns_up_to_20() -> None:
     assert len(result["filtered_stash"]) == 20
 
 
-def test_stash_first_filter_by_weight() -> None:
-    items = [
-        _make_item(stash_id=1, weight=WeightCategory.SPORT),
-        _make_item(stash_id=2, weight=WeightCategory.BULKY),
-    ]
+STASH_FIRST_FILTER_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "items": [
+            _make_item(stash_id=1, weight=WeightCategory.SPORT),
+            _make_item(stash_id=2, weight=WeightCategory.BULKY),
+        ],
+        "stash_filter": StashFilter(weight=WeightCategory.SPORT),
+        "expected_in": [1],
+        "expected_out": [2],
+    },
+    {
+        "items": [
+            _make_item(stash_id=1, yards_total=400.0),
+            _make_item(stash_id=2, yards_total=1000.0),
+        ],
+        "stash_filter": StashFilter(min_yards=600.0),
+        "expected_in": [2],
+        "expected_out": [1],
+    },
+    {
+        "items": [
+            _make_item(stash_id=1, yards_total=400.0),
+            _make_item(stash_id=2, yards_total=1000.0),
+        ],
+        "stash_filter": StashFilter(max_yards=600.0),
+        "expected_in": [1],
+        "expected_out": [2],
+    },
+    {
+        "items": [
+            _make_item(stash_id=1, color_family="Greens"),
+            _make_item(stash_id=2, color_family="Blues"),
+        ],
+        "stash_filter": StashFilter(color_family="green"),
+        "expected_in": [1],
+        "expected_out": [2],
+    },
+    {
+        "items": [_make_item(stash_id=42), _make_item(stash_id=99)],
+        "stash_filter": StashFilter(specific_stash_id=42),
+        "expected_in": [42],
+        "expected_out": [99],
+    },
+]
+
+
+@pytest.mark.parametrize("scenario", STASH_FIRST_FILTER_SCENARIOS)
+def test_stash_first_filter_by_criterion(scenario: dict[str, Any]) -> None:
     result = stash_first_filter(
-        _make_state(stash=items, stash_filter=StashFilter(weight=WeightCategory.SPORT))
+        _make_state(stash=scenario["items"], stash_filter=scenario["stash_filter"])
     )
     ids = [i.stash_id for i in result["filtered_stash"]]
-    assert 1 in ids
-    assert 2 not in ids
-
-
-def test_stash_first_filter_by_min_yards() -> None:
-    items = [
-        _make_item(stash_id=1, yards_total=400.0),
-        _make_item(stash_id=2, yards_total=1000.0),
-    ]
-    result = stash_first_filter(
-        _make_state(stash=items, stash_filter=StashFilter(min_yards=600.0))
-    )
-    ids = [i.stash_id for i in result["filtered_stash"]]
-    assert 1 not in ids
-    assert 2 in ids
-
-
-def test_stash_first_filter_by_specific_stash_id() -> None:
-    items = [
-        _make_item(stash_id=42),
-        _make_item(stash_id=99),
-    ]
-    result = stash_first_filter(
-        _make_state(stash=items, stash_filter=StashFilter(specific_stash_id=42))
-    )
-    ids = [i.stash_id for i in result["filtered_stash"]]
-    assert ids == [42]
-
-
-def test_stash_first_filter_by_color_family() -> None:
-    items = [
-        _make_item(stash_id=1, color_family="Greens"),
-        _make_item(stash_id=2, color_family="Blues"),
-    ]
-    result = stash_first_filter(
-        _make_state(stash=items, stash_filter=StashFilter(color_family="green"))
-    )
-    ids = [i.stash_id for i in result["filtered_stash"]]
-    assert 1 in ids
-    assert 2 not in ids
-
-
-def test_stash_first_filter_by_max_yards() -> None:
-    items = [
-        _make_item(stash_id=1, yards_total=400.0),
-        _make_item(stash_id=2, yards_total=1000.0),
-    ]
-    result = stash_first_filter(
-        _make_state(stash=items, stash_filter=StashFilter(max_yards=600.0))
-    )
-    ids = [i.stash_id for i in result["filtered_stash"]]
-    assert 1 in ids
-    assert 2 not in ids
+    for item_id in scenario["expected_in"]:
+        assert item_id in ids
+    for item_id in scenario["expected_out"]:
+        assert item_id not in ids
 
 
 def test_stash_first_filter_excludes_weaving_yarn() -> None:
