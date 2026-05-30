@@ -50,3 +50,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not eval'"
+markers = [
+    "eval: integration eval tests — require real LLM calls, excluded from CI",
+]
