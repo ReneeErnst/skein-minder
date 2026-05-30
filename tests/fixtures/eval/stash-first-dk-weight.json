@@ -1,0 +1,63 @@
+{
+  "id": "stash-first-dk-weight",
+  "input": {
+    "user_goal": "I have some dk weight yarn I want to use",
+    "normalized_stash": [
+      {
+        "stash_id": 23015637,
+        "brand": "Universal Yarn",
+        "yarn_name": "Cotton Supreme DK Seaspray",
+        "colorway": "307 Black",
+        "weight_category": "dk",
+        "fiber": [],
+        "color_family": "Black",
+        "skeins": 1.0,
+        "yards_per_skein": 231.0,
+        "yards_total": 231.0,
+        "grams_total": 100.0,
+        "notes": null,
+        "project_quantity": "accessory",
+        "is_weaving_yarn": false
+      },
+      {
+        "stash_id": 28043812,
+        "brand": "Cascade Yarns ®",
+        "yarn_name": "Ultra Pima",
+        "colorway": "Natural",
+        "weight_category": "dk",
+        "fiber": [],
+        "color_family": "Natural/Undyed",
+        "skeins": 1.0,
+        "yards_per_skein": 220.0,
+        "yards_total": 220.0,
+        "grams_total": 100.0,
+        "notes": null,
+        "project_quantity": "accessory",
+        "is_weaving_yarn": false
+      },
+      {
+        "stash_id": 20593334,
+        "brand": "madelinetosh",
+        "yarn_name": "Tosh DK",
+        "colorway": "OOAK",
+        "weight_category": "dk",
+        "fiber": [],
+        "color_family": "Blue-green",
+        "skeins": 1.0,
+        "yards_per_skein": 228.0,
+        "yards_total": 228.0,
+        "grams_total": 112.0,
+        "notes": null,
+        "project_quantity": "accessory",
+        "is_weaving_yarn": false
+      }
+    ]
+  },
+  "expected": {
+    "recommendation_count_min": 1,
+    "recommendation_count_max": 3,
+    "stash_ids_subset_of_input": true,
+    "no_weight_mixing": true,
+    "filter_confidence": "high"
+  }
+}

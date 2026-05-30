@@ -46,6 +46,45 @@ def recommend(goal: str, fixture: bool) -> None:
     click.echo(output)
 
 
+@cli.command()
+@click.option("--example-id", default=None, help="Run only this example (by id).")
+def eval(example_id: str | None) -> None:
+    """Run the two-layer eval suite on golden examples."""
+    from skeinminder.eval import (
+        EvalRunResult,
+        assert_example,
+        format_table,
+        judge_example,
+        load_examples,
+        run_example,
+    )
+
+    examples = load_examples()
+    if example_id is not None:
+        examples = [e for e in examples if e.id == example_id]
+        if not examples:
+            raise click.ClickException(f"No example with id '{example_id}'")
+
+    results: list[EvalRunResult] = []
+    for example in examples:
+        click.echo(f"Running {example.id}...")
+        state = run_example(example)
+        assertions = assert_example(example, state)
+        try:
+            judge = judge_example(example, state)
+        except Exception as exc:
+            click.echo(f"  Judge failed: {exc}", err=True)
+            judge = None
+        results.append(
+            EvalRunResult(example_id=example.id, assertions=assertions, judge=judge)
+        )
+
+    click.echo(format_table(results))
+
+    if any(any(not a.passed for a in r.assertions) for r in results):
+        raise SystemExit(1)
+
+
 @observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
 def _run_recommend(goal: str, stash: list[StashItem]) -> str:
     """Run the recommendation graph and return formatted output as a string."""

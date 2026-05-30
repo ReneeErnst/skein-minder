@@ -554,13 +554,17 @@ Spec: `docs/superpowers/specs/YYYY-MM-DD-phase4-observability.md` (to be written
 
 ### Phase 5 — Evaluation
 
-Goal: build a two-layer eval suite using the Langfuse infrastructure from Phase 4. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (groundedness, relevance).
+Goal: build a two-layer eval suite using the Langfuse infrastructure from Phase 4. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (yarn-goal fit and reasoning coherence).
 
 Key decisions:
-- Golden dataset populated in `tests/fixtures/eval/` (schema established in Phase 4).
-- Deterministic assertions run as `@pytest.mark.eval` tests (excluded from CI by default, runnable with `uv run pytest -m eval`).
-- LLM-as-judge scoring runs via `skeinminder eval` CLI command and logs results to Langfuse.
-- Langfuse evaluators configured to score new traces automatically — the production monitoring analog.
+- Golden dataset: 3–5 JSON examples in `tests/fixtures/eval/` (schema established in Phase 4). Each example uses the sanitized fixture stash — no live Ravelry calls needed.
+- Two test layers: unit tests (CI-safe, mock LLM/Ravelry) and integration tests (`@pytest.mark.eval`, excluded from CI, make real LLM calls). Unit tests cover `load_examples()`, `assert_example()`, `format_table()`, `run_example()` with mocked recommend node, and `judge_example()` with mocked Claude client.
+- Deterministic assertions (`assert_example()`) check: recommendation count in range, all stash IDs are a subset of input IDs, no weight mixing across recommendations, filter confidence matches expected.
+- LLM-as-judge runs via `skeinminder eval` CLI command only (too expensive for pytest). Judge scores two dimensions on a 1–5 rubric: yarn-goal fit and reasoning coherence. Scores are logged to Langfuse as named scores on judge traces.
+- Golden examples are upserted as Langfuse dataset items (keyed by `example_id`) so eval coverage is visible in the UI.
+- `skeinminder eval` exits non-zero if any example fails assertions or scores below 3 on either dimension.
+- **Automated Langfuse evaluators are deferred to a later phase.** Phase 5 uses explicit CLI-driven scoring only. Automated evaluators require enough trace history to set meaningful thresholds — revisit after Phase 6 or 7.
+- All eval logic lives in `src/skeinminder/eval.py` (single module, not a package).
 
 Spec: `docs/superpowers/specs/YYYY-MM-DD-phase5-evaluation.md` (to be written)
 

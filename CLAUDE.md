@@ -31,6 +31,10 @@ uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to
 
 uv run python -m skeinminder.scripts.setup_langfuse_dataset  # create skeinminder-eval-v1 dataset (idempotent)
 
+skeinminder eval                       # run two-layer eval suite (all examples)
+skeinminder eval --example-id <id>     # run a single example by id
+uv run pytest -m eval                  # run @pytest.mark.eval integration tests (real LLM, not CI)
+
 docker compose up -d   # start local Langfuse + Postgres (http://localhost:3000)
 docker compose down    # stop containers
 docker compose down -v # stop and delete volumes (reset all Langfuse data)
@@ -83,14 +87,16 @@ src/skeinminder/
     graph.py       # build_graph() — compiles the LangGraph StateGraph
     nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output — all @observe-decorated
   scripts/
-    setup_langfuse_dataset.py  # idempotent script to create skeinminder-eval-v1 dataset
+    setup_langfuse_dataset.py  # idempotent script to create skeinminder-eval-v1 dataset and upsert golden examples
   config.py        # get_ravelry_credentials() from .env
-  cli.py           # `skeinminder stash` and `skeinminder recommend`; _run_recommend() carries root @observe trace
+  cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`; _run_recommend() carries root @observe trace
+  eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()
   observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
   conftest.py      # FixtureTransport (httpx transport) + fixture_client fixture
+  test_eval.py     # unit tests (CI) + @pytest.mark.eval integration tests (real LLM)
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
-  fixtures/eval/   # Phase 5 eval scaffold — example-schema.json documents the golden example shape
+  fixtures/eval/   # three golden examples (project-first, stash-first, low-confidence); example-schema.json documents the shape
 docker-compose.yml # Langfuse v2 self-hosted + Postgres; pre-seeded org/project/API keys
 ```
 
