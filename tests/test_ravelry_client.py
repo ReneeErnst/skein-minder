@@ -12,7 +12,7 @@ from skeinminder.ravelry.exceptions import (
     RavelryAuthError,
     RavelryRateLimitError,
 )
-from skeinminder.ravelry.models import RawUser
+from skeinminder.ravelry.models import RawStashItem, RawUser
 
 
 def test_client_requires_credentials_without_transport() -> None:
@@ -55,8 +55,6 @@ def test_client_sends_basic_auth_header() -> None:
 
 
 def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
-    from skeinminder.ravelry.models import RawStashItem
-
     items = fixture_client.get_stash_list("testuser")
     assert len(items) == 36
     assert all(isinstance(item, RawStashItem) for item in items)
@@ -108,8 +106,6 @@ def test_get_stash_list_fetches_all_pages() -> None:
 
 
 def test_get_stash_detail_returns_item(fixture_client: RavelryClient) -> None:
-    from skeinminder.ravelry.models import RawStashItem
-
     item = fixture_client.get_stash_detail("testuser", 15952696)
     assert isinstance(item, RawStashItem)
     assert item.id == 15952696

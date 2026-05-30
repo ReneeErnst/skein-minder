@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import patch
 
+from skeinminder.graph.graph import build_graph
+from skeinminder.graph.nodes import (
+    assess_filter_quality,
+    format_output,
+    low_confidence_output,
+)
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
@@ -63,8 +69,6 @@ def _canned_recommendations(stash_id: int = 1) -> list[Recommendation]:
 
 
 def test_format_output_renders_all_recommendations() -> None:
-    from skeinminder.graph.nodes import format_output
-
     item = _make_item(stash_id=1)
     recs = _canned_recommendations(stash_id=1)
 
@@ -79,8 +83,6 @@ def test_format_output_renders_all_recommendations() -> None:
 
 
 def test_format_output_handles_empty_recommendations() -> None:
-    from skeinminder.graph.nodes import format_output
-
     result = format_output(
         _make_state(user_input="", user_goal=None, recommendations=[])
     )
@@ -93,8 +95,6 @@ def test_format_output_handles_empty_recommendations() -> None:
 def test_graph_project_first_routes_and_formats(
     normalized_stash: list[StashItem],
 ) -> None:
-    from skeinminder.graph.graph import build_graph
-
     canned = _canned_recommendations(stash_id=normalized_stash[0].stash_id)
 
     with (
@@ -124,8 +124,6 @@ def test_graph_project_first_routes_and_formats(
 def test_graph_stash_first_routes_and_formats(
     normalized_stash: list[StashItem],
 ) -> None:
-    from skeinminder.graph.graph import build_graph
-
     canned = _canned_recommendations(stash_id=normalized_stash[0].stash_id)
 
     with patch("skeinminder.graph.nodes.recommend") as mock_rec:
@@ -149,15 +147,11 @@ def test_graph_stash_first_routes_and_formats(
 
 
 def test_assess_filter_quality_low_when_filtered_stash_empty() -> None:
-    from skeinminder.graph.nodes import assess_filter_quality
-
     result = assess_filter_quality(_make_state())
     assert result["filter_confidence"] == "low"
 
 
 def test_assess_filter_quality_low_when_sweater_goal_has_insufficient_yards() -> None:
-    from skeinminder.graph.nodes import assess_filter_quality
-
     small_item = _make_item(stash_id=1, yards_total=300.0)
     result = assess_filter_quality(
         _make_state(normalized_stash=[small_item], filtered_stash=[small_item])
@@ -166,8 +160,6 @@ def test_assess_filter_quality_low_when_sweater_goal_has_insufficient_yards() ->
 
 
 def test_assess_filter_quality_high_when_adequate_stash() -> None:
-    from skeinminder.graph.nodes import assess_filter_quality
-
     item = _make_item(stash_id=1, yards_total=1000.0)
     result = assess_filter_quality(
         _make_state(normalized_stash=[item], filtered_stash=[item])
@@ -176,8 +168,6 @@ def test_assess_filter_quality_high_when_adequate_stash() -> None:
 
 
 def test_assess_filter_quality_high_for_stash_first_mode() -> None:
-    from skeinminder.graph.nodes import assess_filter_quality
-
     item = _make_item(stash_id=1, yards_total=400.0)
     result = assess_filter_quality(
         _make_state(
@@ -197,8 +187,6 @@ def test_assess_filter_quality_high_for_stash_first_mode() -> None:
 
 
 def test_low_confidence_output_user_confirms() -> None:
-    from skeinminder.graph.nodes import low_confidence_output
-
     state = _make_state(filter_confidence="low")
     with patch("click.confirm", return_value=True), patch("click.echo"):
         result = low_confidence_output(state)
@@ -208,8 +196,6 @@ def test_low_confidence_output_user_confirms() -> None:
 
 
 def test_low_confidence_output_user_declines() -> None:
-    from skeinminder.graph.nodes import low_confidence_output
-
     state = _make_state(filter_confidence="low")
     with patch("click.confirm", return_value=False), patch("click.echo"):
         result = low_confidence_output(state)
@@ -222,8 +208,6 @@ def test_low_confidence_output_user_declines() -> None:
 
 
 def test_graph_low_confidence_user_confirms() -> None:
-    from skeinminder.graph.graph import build_graph
-
     canned = [
         Recommendation(
             title=f"Project {i}",
@@ -256,8 +240,6 @@ def test_graph_low_confidence_user_confirms() -> None:
 
 
 def test_graph_low_confidence_user_declines() -> None:
-    from skeinminder.graph.graph import build_graph
-
     with patch("click.confirm", return_value=False), patch("click.echo"):
         graph = build_graph()
         result = graph.invoke(_make_state(mode="", user_goal=None, normalized_stash=[]))

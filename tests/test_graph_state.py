@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import get_type_hints
+
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import WeightCategory
 
@@ -31,8 +33,6 @@ def test_recommendation_requires_all_fields() -> None:
 
 
 def test_graph_state_is_typed_dict() -> None:
-    from typing import get_type_hints
-
     hints = get_type_hints(GraphState)
     assert "user_input" in hints
     assert "mode" in hints
