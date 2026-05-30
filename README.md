@@ -9,51 +9,51 @@ Every knitter knows the problem: a stash full of beautiful yarn and no idea what
 ## How it works today
 
 ```mermaid
-flowchart LR
-    API["Ravelry API"]
-    Client["RavelryClient\nBasic Auth · retry · pagination"]
-    Models["Raw Pydantic Models"]
-    Norm["Normalizer\nnormalize_stash()"]
-    Item["StashItem\ndomain model"]
-    Score["Scoring Helpers\nyardage · weight · fiber"]
-    CLI["skeinminder stash"]
+flowchart TD
+    User(["💬 User goal or stash description"])
+    Supervisor["Supervisor\nclassifies mode"]
+    PFF["project_first_filter\ngoal → yarn candidates"]
+    SFF["stash_first_filter\nyarn → project candidates"]
+    AQ["assess_filter_quality\nhigh / low confidence"]
+    LCO["low_confidence_output\nwarn + confirm"]
+    Rec["recommend\nClaude · prompt caching"]
+    Fmt["format_output\nplain-text CLI report"]
 
-    API --> Client --> Models --> Norm --> Item --> Score --> CLI
+    User --> Supervisor
+    Supervisor -->|project_first| PFF
+    Supervisor -->|stash_first| SFF
+    PFF --> AQ
+    SFF --> AQ
+    AQ -->|high| Rec
+    AQ -->|low| LCO
+    LCO -->|confirmed| Rec
+    LCO -->|declined| END(["END"])
+    Rec --> Fmt
+    Fmt --> CLI(["skeinminder recommend"])
 ```
+
+Every node is instrumented with Langfuse `@observe` spans. Run `docker compose up -d` to stand up a local Langfuse instance and see traces in the UI.
 
 ## Where it's going
 
 ```mermaid
 flowchart TD
-    User(["💬 User goal or stash filter"])
-    Supervisor["Supervisor Node"]
-
-    subgraph built ["✅ Phases 0–2b — built"]
+    subgraph built ["✅ Phases 0–4 — built"]
         Stash["Stash Agent\nRavelryClient + fixture mode"]
         Norm["Yarn Normalizer\nStashItem · yardage · weight · fiber"]
+        Graph["LangGraph Pipeline\nsupervisor · filters · recommend"]
+        Obs["Langfuse Observability\n@observe · Docker Compose"]
     end
 
-    subgraph phase3 ["🔄 Phase 3 — in progress"]
-        Filter["Stash Filter"]
-        LLM["Recommendation Node\nClaude + prompt caching"]
-        Format["Response Formatter"]
-    end
-
-    subgraph future ["📋 Phases 4–6 — planned"]
+    subgraph future ["📋 Phases 5–7 — planned"]
         Pattern["Pattern Scout Agent"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
 
-    User --> Supervisor
-    Supervisor --> Stash
-    Stash --> Norm
-    Norm --> Filter
-    Filter --> LLM
-    LLM --> Format
-    Format --> Gate
-    Gate -->|"✅ approved"| Writer
-    Gate -->|"✏️ revise"| LLM
+    Stash --> Norm --> Graph --> Obs
+    Obs --> Pattern --> Gate -->|"✅ approved"| Writer
+    Gate -->|"✏️ revise"| Graph
 ```
 
 ---
@@ -64,6 +64,7 @@ flowchart TD
 - LangGraph (stateful multi-agent orchestration)
 - httpx · tenacity (Ravelry API client, retry on 429/5xx)
 - Claude via `langchain-anthropic` (with prompt caching)
+- Langfuse (graph tracing · self-hosted via Docker Compose)
 - pytest · ruff · mypy strict · GitHub Actions CI
 
 ---
@@ -75,10 +76,11 @@ flowchart TD
 | 0 | Project setup (uv, ruff, mypy, CI) | ✅ Complete |
 | 1 | Ravelry read-only client | ✅ Complete |
 | 2 | Stash normalization and scoring | ✅ Complete |
-| 3 | LangGraph MVP — stash-to-recommendation | 🔄 In progress |
-| 4 | Pattern search and candidate matching | 📋 Planned |
-| 5 | Human approval checkpoints | 📋 Planned |
-| 6 | Ravelry project write-back | 📋 Planned |
+| 3 | LangGraph MVP — stash-to-recommendation | ✅ Complete |
+| 4 | Tracing and observability (Langfuse) | ✅ Complete |
+| 5 | Pattern search and candidate matching | 📋 Planned |
+| 6 | Human approval checkpoints | 📋 Planned |
+| 7 | Ravelry project write-back | 📋 Planned |
 
 ---
 
@@ -92,9 +94,11 @@ uv sync
 
 # Try it without Ravelry credentials (uses committed fixture data)
 skeinminder stash --fixture
+skeinminder recommend "I want to make a fall cardigan" --fixture
 
-# Live mode: copy .env.example → .env and add your Ravelry API credentials
+# Live mode: copy .env.example → .env and add your credentials
 skeinminder stash
+skeinminder recommend "I have 900 yards of worsted — what can I make?"
 ```
 
 Live mode requires a Ravelry "Personal Account Access" app — the stash endpoint requires write-level auth even for reads. See `.env.example` for the required variables.
@@ -112,3 +116,21 @@ make check       # full CI check (pre-commit + pytest)
 ```
 
 Tests never hit the live Ravelry API — all HTTP is routed through `FixtureTransport`, a custom `httpx` transport backed by committed JSON fixtures.
+
+### Local observability
+
+To see Langfuse traces while developing:
+
+```bash
+docker compose up -d        # start Langfuse + Postgres (http://localhost:3000)
+# log in: dev@example.com / devpassword123
+
+# Copy the pre-seeded keys into .env:
+LANGFUSE_PUBLIC_KEY=lf-pk-skeinminder-local
+LANGFUSE_SECRET_KEY=lf-sk-skeinminder-local
+LANGFUSE_HOST=http://localhost:3000
+
+skeinminder recommend "I want a quick hat" --fixture  # run generates a trace
+```
+
+Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinminder recommend` call creates one root trace (`skeinminder-recommend`) with child spans for every graph node.
