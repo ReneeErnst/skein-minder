@@ -537,21 +537,25 @@ No new features. No spec needed — implement as a single PR with a checklist co
 
 ### Phase 4 — Observability (Langfuse)
 
-Goal: wire in self-hosted Langfuse tracing so every graph run is visible as a structured trace — nodes, LLM calls, filter counts, token usage, and latency — without relying on a third-party SaaS.
+Goal: wire in self-hosted Langfuse tracing so every graph run is visible as a structured trace — nodes, LLM calls, filter counts, token usage, and latency — without relying on a third-party SaaS. Also lay the eval infrastructure scaffold that Phase 5 needs.
 
 Key decisions:
-- Self-hosted Langfuse via Docker Compose (local and demo-friendly).
+- Self-hosted Langfuse via Docker Compose (local and demo-friendly); `docker-compose.yml` committed to the repo.
 - Full SDK integration with `@observe` decorators on each node, not just the LangChain callback. This makes filter decisions and state transitions visible as spans, not just the LLM call.
 - Langfuse replaces LangSmith vars in `.env.example`.
+- Langfuse dataset configured (named, schema defined) so Phase 5 can log to it immediately.
+- `tests/fixtures/eval/` directory created with one documented example file showing the input/output schema Phase 5 will populate.
+
+Phase 4 does NOT include eval logic (assertions, scoring, CLI). That belongs in Phase 5.
 
 Spec: `docs/superpowers/specs/YYYY-MM-DD-phase4-observability.md` (to be written)
 
 ### Phase 5 — Evaluation
 
-Goal: build a two-layer eval suite. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (groundedness, relevance).
+Goal: build a two-layer eval suite using the Langfuse infrastructure from Phase 4. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (groundedness, relevance).
 
 Key decisions:
-- Golden dataset of fixture-based inputs with expected properties, stored as JSON in `tests/fixtures/eval/`.
+- Golden dataset populated in `tests/fixtures/eval/` (schema established in Phase 4).
 - Deterministic assertions run as `@pytest.mark.eval` tests (excluded from CI by default, runnable with `uv run pytest -m eval`).
 - LLM-as-judge scoring runs via `skeinminder eval` CLI command and logs results to Langfuse.
 - Langfuse evaluators configured to score new traces automatically — the production monitoring analog.
