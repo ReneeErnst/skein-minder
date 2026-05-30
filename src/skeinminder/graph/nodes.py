@@ -308,15 +308,11 @@ def recommend(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    try:
-        from langfuse.callback import CallbackHandler  # requires langchain
+    from langfuse.callback import CallbackHandler  # requires langchain; lazy import
 
-        callbacks = [CallbackHandler()]
-    except ImportError:
-        callbacks = []
-
+    langfuse_handler = CallbackHandler()
     result: _RecommendationList = structured.invoke(  # type: ignore[assignment]
-        messages, config={"callbacks": callbacks}
+        messages, config={"callbacks": [langfuse_handler]}
     )
     langfuse_context.update_current_observation(
         metadata={"recommendation_count": len(result.recommendations)}
