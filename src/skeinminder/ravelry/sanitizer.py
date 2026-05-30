@@ -1,3 +1,5 @@
+"""Strips personal data from API responses before fixture files are committed."""
+
 from __future__ import annotations
 
 import copy

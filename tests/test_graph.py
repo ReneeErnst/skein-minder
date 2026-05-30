@@ -95,13 +95,17 @@ def test_format_output_handles_empty_recommendations() -> None:
 def test_graph_project_first_routes_and_formats(
     normalized_stash: list[StashItem],
 ) -> None:
+    """Should route through low-confidence path and return formatted recommendations.
+
+    The fixture stash contains no sweater-quantity yarn, so a cardigan goal triggers
+    low_confidence_output. click.confirm is patched to simulate the user choosing
+    to proceed anyway.
+    """
     canned = _canned_recommendations(stash_id=normalized_stash[0].stash_id)
 
     with (
         patch("skeinminder.graph.nodes.recommend") as mock_rec,
-        patch(
-            "click.confirm", return_value=True
-        ),  # fixture stash has no sweater-qty yarn → low-confidence path
+        patch("click.confirm", return_value=True),
         patch("click.echo"),
     ):
         mock_rec.return_value = {"recommendations": canned}

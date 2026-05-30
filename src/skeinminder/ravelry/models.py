@@ -1,3 +1,10 @@
+"""Raw Pydantic models for Ravelry API responses.
+
+All models use extra="ignore" — the API returns many undocumented fields and
+evolves without notice. Application logic uses the normalized types in normalizer.py,
+not these raw models directly.
+"""
+
 from __future__ import annotations
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
