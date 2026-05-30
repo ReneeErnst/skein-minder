@@ -273,12 +273,13 @@ def _format_stash_for_prompt(items: list[StashItem]) -> str:
     return "\n".join(lines)
 
 
+@observe(name="recommend")  # type: ignore[untyped-decorator]
 def recommend(state: GraphState) -> dict[str, Any]:
-    """Call the LLM with filtered stash context and return 3 Recommendation objects.
+    """Call the LLM with filtered stash and return up to 3 Recommendation objects.
 
     Uses the model named by SKEINMINDER_MODEL env var (default:
     claude-haiku-4-5-20251001). The system prompt is marked for prompt caching to
-    reduce cost on repeated calls.
+    reduce cost on repeated calls. Token usage is captured via LangChain callback.
     """
     model_name = os.getenv("SKEINMINDER_MODEL", "claude-haiku-4-5-20251001")
     client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
@@ -307,7 +308,15 @@ def recommend(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    result: _RecommendationList = structured.invoke(messages)  # type: ignore[assignment]
+    from langfuse.callback import CallbackHandler  # requires langchain; lazy import
+
+    langfuse_handler = CallbackHandler()
+    result: _RecommendationList = structured.invoke(  # type: ignore[assignment]
+        messages, config={"callbacks": [langfuse_handler]}
+    )
+    langfuse_context.update_current_observation(
+        metadata={"recommendation_count": len(result.recommendations)}
+    )
     return {"recommendations": result.recommendations}
 
 
