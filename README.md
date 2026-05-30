@@ -45,14 +45,18 @@ flowchart TD
         Obs["Langfuse Observability\n@observe · Docker Compose"]
     end
 
-    subgraph future ["📋 Phases 5–7 — planned"]
+    subgraph built2 ["✅ Phase 5 — built"]
+        Eval["Eval Suite\nLangfuse dataset · LLM-as-judge · pytest integration"]
+    end
+
+    subgraph future ["📋 Phases 6–8 — planned"]
         Pattern["Pattern Scout Agent"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
 
-    Stash --> Norm --> Graph --> Obs
-    Obs --> Pattern --> Gate -->|"✅ approved"| Writer
+    Stash --> Norm --> Graph --> Obs --> Eval
+    Eval --> Pattern --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 ```
 
@@ -78,9 +82,10 @@ flowchart TD
 | 2 | Stash normalization and scoring | ✅ Complete |
 | 3 | LangGraph MVP — stash-to-recommendation | ✅ Complete |
 | 4 | Tracing and observability (Langfuse) | ✅ Complete |
-| 5 | Pattern search and candidate matching | 📋 Planned |
-| 6 | Human approval checkpoints | 📋 Planned |
-| 7 | Ravelry project write-back | 📋 Planned |
+| 5 | Eval suite (deterministic assertions + LLM-as-judge) | ✅ Complete |
+| 6 | Pattern search and candidate matching | 📋 Planned |
+| 7 | Human approval checkpoints | 📋 Planned |
+| 8 | Ravelry project write-back | 📋 Planned |
 
 ---
 
@@ -134,3 +139,23 @@ skeinminder recommend "I want a quick hat" --fixture  # run generates a trace
 ```
 
 Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinminder recommend` call creates one root trace (`skeinminder-recommend`) with child spans for every graph node.
+
+### Eval suite
+
+The eval suite has two layers: deterministic assertions (fast, no LLM, CI-safe) and LLM-as-judge scoring (logged to Langfuse).
+
+```bash
+# First-time setup: create the Langfuse dataset and upsert golden examples
+uv run python -m skeinminder.scripts.setup_langfuse_dataset
+
+# Run the full eval (all golden examples — requires ANTHROPIC_API_KEY and Langfuse running)
+skeinminder eval
+
+# Run a single example by id
+skeinminder eval --example-id project-first-cardigan
+
+# Deterministic assertions only (fast, no LLM calls — runs in CI)
+uv run pytest -m eval
+```
+
+Golden examples live in `tests/fixtures/eval/`. Each has an `input`, `expected` properties (stash IDs, weight constraints), and a `judge_criteria` string used for LLM scoring. Results are logged as Langfuse scores on the corresponding trace.
