@@ -28,6 +28,12 @@ skeinminder recommend "<goal>" --fixture  # same, using fixture stash instead of
 
 uv run python -m skeinminder.ravelry.recorder        # record fresh fixtures from live API
 uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to tests/fixtures/raw/ (gitignored)
+
+uv run python -m skeinminder.scripts.setup_langfuse_dataset  # create skeinminder-eval-v1 dataset (idempotent)
+
+docker compose up -d   # start local Langfuse + Postgres (http://localhost:3000)
+docker compose down    # stop containers
+docker compose down -v # stop and delete volumes (reset all Langfuse data)
 ```
 
 ## Stack
@@ -37,6 +43,7 @@ uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to
 - langchain-anthropic for LLM calls (structured output via `with_structured_output`)
 - Pydantic v2 for models (`extra="ignore"` everywhere — Ravelry API fields evolve)
 - httpx for Ravelry API client, with tenacity retry on 429/5xx
+- langfuse for graph tracing (`@observe` decorators, self-hosted via Docker Compose)
 - pytest, ruff (E/F/I rules, line-length 88), mypy strict
 
 ## Environment variables
@@ -50,9 +57,17 @@ ANTHROPIC_API_KEY=      # required for skeinminder recommend (live LLM calls)
 SKEINMINDER_MODEL=      # optional; defaults to claude-haiku-4-5-20251001
 ```
 
-LangSmith tracing vars (`LANGSMITH_API_KEY`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_PROJECT`) are optional and documented in `.env.example`.
+Langfuse tracing vars are optional — set them to enable graph traces in the Langfuse UI:
 
-## What's built (Phases 1–3)
+```
+LANGFUSE_PUBLIC_KEY=    # from docker-compose.yml LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+LANGFUSE_SECRET_KEY=    # from docker-compose.yml LANGFUSE_INIT_PROJECT_SECRET_KEY
+LANGFUSE_HOST=          # defaults to http://localhost:3000
+```
+
+Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
+
+## What's built (Phases 1–4)
 
 ```
 src/skeinminder/
@@ -66,12 +81,17 @@ src/skeinminder/
   graph/
     state.py       # GraphState (TypedDict), StashFilter, Recommendation
     graph.py       # build_graph() — compiles the LangGraph StateGraph
-    nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output
+    nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output — all @observe-decorated
+  scripts/
+    setup_langfuse_dataset.py  # idempotent script to create skeinminder-eval-v1 dataset
   config.py        # get_ravelry_credentials() from .env
-  cli.py           # `skeinminder stash` and `skeinminder recommend`
+  cli.py           # `skeinminder stash` and `skeinminder recommend`; _run_recommend() carries root @observe trace
+  observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
   conftest.py      # FixtureTransport (httpx transport) + fixture_client fixture
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
+  fixtures/eval/   # Phase 5 eval scaffold — example-schema.json documents the golden example shape
+docker-compose.yml # Langfuse v2 self-hosted + Postgres; pre-seeded org/project/API keys
 ```
 
 ## Graph architecture
@@ -89,8 +109,10 @@ supervisor → [project_first_filter | stash_first_filter]
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords; both sort descending by yards.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `recommend` or `low_confidence_output` accordingly.
 - **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
-- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt and returns up to 3 `Recommendation` objects via structured output.
+- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt and returns up to 3 `Recommendation` objects via structured output. Also attaches a `langfuse.callback.CallbackHandler` (lazy import — requires `langchain`) for token tracking.
 - **format_output**: renders recommendations as a plain-text CLI report, resolving stash IDs back to yarn names.
+
+Every node is decorated with `@observe(name=...)` from `langfuse.decorators`. The decorator is a no-op when `LANGFUSE_PUBLIC_KEY` is absent, so all tests pass without credentials. The CLI's `_run_recommend()` function carries the root `@observe(name="skeinminder-recommend")` trace.
 
 In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the node function itself, not the LLM client — so the full graph routing logic is exercised without live API calls.
 

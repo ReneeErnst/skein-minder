@@ -1,0 +1,54 @@
+# Langfuse v2 self-hosted — minimal dev setup (Postgres only).
+# See: https://langfuse.com/docs/deployment/local
+#
+# First start: Langfuse seeds an org, project, and API keys from the
+# LANGFUSE_INIT_* vars below. Copy LANGFUSE_INIT_PROJECT_PUBLIC_KEY and
+# LANGFUSE_INIT_PROJECT_SECRET_KEY into .env as LANGFUSE_PUBLIC_KEY and
+# LANGFUSE_SECRET_KEY.
+#
+# Commands:
+#   docker compose up -d    # start (detached)
+#   docker compose down     # stop and remove containers
+#   docker compose down -v  # stop and delete volumes (reset all data)
+services:
+  langfuse:
+    image: ghcr.io/langfuse/langfuse:2
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://langfuse:langfuse@db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev-nextauth-secret-change-for-prod
+      SALT: dev-salt-change-for-prod
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_ORG_ID: skeinminder-org
+      LANGFUSE_INIT_ORG_NAME: SkeinMinder
+      LANGFUSE_INIT_PROJECT_ID: skeinminder-project
+      LANGFUSE_INIT_PROJECT_NAME: skein-minder
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: lf-pk-skeinminder-local
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: lf-sk-skeinminder-local
+      LANGFUSE_INIT_USER_EMAIL: dev@example.com
+      LANGFUSE_INIT_USER_NAME: Dev
+      LANGFUSE_INIT_USER_PASSWORD: devpassword123
+
+  db:
+    image: postgres:16-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_pgdata:/var/lib/postgresql/data
+
+volumes:
+  langfuse_pgdata:
+    driver: local

@@ -1,0 +1,17 @@
+{
+  "_comment": "Schema for Phase 5 golden eval examples. Each file represents one test scenario. The 'input' and 'expected' shapes here are illustrative — Phase 5 will populate real examples following this format.",
+  "id": "project-first-worsted-sweater",
+  "input": {
+    "user_goal": "I want to make a fall cardigan",
+    "normalized_stash": [
+      "...array of StashItem dicts (same shape as normalize_stash() output)..."
+    ]
+  },
+  "expected": {
+    "recommendation_count_min": 1,
+    "recommendation_count_max": 3,
+    "stash_ids_subset_of_input": true,
+    "no_weight_mixing": true,
+    "filter_confidence": "high"
+  }
+}

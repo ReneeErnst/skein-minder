@@ -9,6 +9,10 @@ from typing import Any
 import click
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from langfuse.decorators import (
+    langfuse_context,
+    observe,
+)
 from pydantic import BaseModel
 
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
@@ -50,6 +54,7 @@ def _extract_garment_type(goal: str) -> str | None:
     return None
 
 
+@observe(name="supervisor")  # type: ignore[untyped-decorator]
 def supervisor(state: GraphState) -> dict[str, Any]:
     """Deterministically classify mode and populate user_goal or stash_filter.
 
@@ -69,11 +74,14 @@ def supervisor(state: GraphState) -> dict[str, Any]:
             weight=find_weight_in_text(text),
             min_yards=_extract_yards(text),
         )
+        langfuse_context.update_current_observation(metadata={"mode": mode})
         return {"mode": mode, "user_goal": None, "stash_filter": stash_filter}
 
+    langfuse_context.update_current_observation(metadata={"mode": mode})
     return {"mode": mode, "user_goal": state["user_input"], "stash_filter": None}
 
 
+@observe(name="project_first_filter")  # type: ignore[untyped-decorator]
 def project_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash for project-first mode, capped at 20 items.
 
@@ -105,9 +113,14 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
         filtered.append(item)
 
     filtered.sort(key=lambda i: i.yards_total, reverse=True)
-    return {"filtered_stash": filtered[:20]}
+    result = filtered[:20]
+    langfuse_context.update_current_observation(
+        metadata={"candidate_count": len(result)}
+    )
+    return {"filtered_stash": result}
 
 
+@observe(name="stash_first_filter")  # type: ignore[untyped-decorator]
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
@@ -143,9 +156,14 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
         filtered.append(item)
 
     filtered.sort(key=lambda i: i.yards_total, reverse=True)
-    return {"filtered_stash": filtered[:20]}
+    result = filtered[:20]
+    langfuse_context.update_current_observation(
+        metadata={"candidate_count": len(result)}
+    )
+    return {"filtered_stash": result}
 
 
+@observe(name="assess_filter_quality")  # type: ignore[untyped-decorator]
 def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     """Assess whether filtered_stash is sufficient to support recommendations.
 
@@ -154,15 +172,23 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     """
     filtered = state["filtered_stash"]
     if not filtered:
+        langfuse_context.update_current_observation(
+            metadata={"filter_confidence": "low"}
+        )
         return {"filter_confidence": "low"}
     total_yards = sum(i.yards_total for i in filtered)
     goal = (state["user_goal"] or "").lower()
     is_sweater_goal = _extract_garment_type(goal) is not None
     if is_sweater_goal and total_yards < 500:
+        langfuse_context.update_current_observation(
+            metadata={"filter_confidence": "low"}
+        )
         return {"filter_confidence": "low"}
+    langfuse_context.update_current_observation(metadata={"filter_confidence": "high"})
     return {"filter_confidence": "high"}
 
 
+@observe(name="low_confidence_output")  # type: ignore[untyped-decorator]
 def low_confidence_output(state: GraphState) -> dict[str, Any]:
     """Summarise what the filter found and ask the user whether to proceed anyway.
 
@@ -193,7 +219,9 @@ def low_confidence_output(state: GraphState) -> dict[str, Any]:
         "\nGet recommendations using available yarn anyway?", default=False
     )
     if proceed:
+        langfuse_context.update_current_observation(metadata={"force_recommend": True})
         return {"force_recommend": True}
+    langfuse_context.update_current_observation(metadata={"force_recommend": False})
     return {
         "force_recommend": False,
         "formatted_output": (
@@ -245,12 +273,13 @@ def _format_stash_for_prompt(items: list[StashItem]) -> str:
     return "\n".join(lines)
 
 
+@observe(name="recommend")  # type: ignore[untyped-decorator]
 def recommend(state: GraphState) -> dict[str, Any]:
-    """Call the LLM with filtered stash context and return 3 Recommendation objects.
+    """Call the LLM with filtered stash and return up to 3 Recommendation objects.
 
     Uses the model named by SKEINMINDER_MODEL env var (default:
     claude-haiku-4-5-20251001). The system prompt is marked for prompt caching to
-    reduce cost on repeated calls.
+    reduce cost on repeated calls. Token usage is captured via LangChain callback.
     """
     model_name = os.getenv("SKEINMINDER_MODEL", "claude-haiku-4-5-20251001")
     client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
@@ -279,10 +308,19 @@ def recommend(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    result: _RecommendationList = structured.invoke(messages)  # type: ignore[assignment]
+    from langfuse.callback import CallbackHandler  # requires langchain; lazy import
+
+    langfuse_handler = CallbackHandler()
+    result: _RecommendationList = structured.invoke(  # type: ignore[assignment]
+        messages, config={"callbacks": [langfuse_handler]}
+    )
+    langfuse_context.update_current_observation(
+        metadata={"recommendation_count": len(result.recommendations)}
+    )
     return {"recommendations": result.recommendations}
 
 
+@observe(name="format_output")  # type: ignore[untyped-decorator]
 def format_output(state: GraphState) -> dict[str, Any]:
     """Format recommendations as a plain-text CLI report.
 
