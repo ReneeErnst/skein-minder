@@ -1,0 +1,31 @@
+{
+  "id": "low-confidence-sweater",
+  "input": {
+    "user_goal": "I want to make a large sweater",
+    "normalized_stash": [
+      {
+        "stash_id": 16182243,
+        "brand": "Rowan",
+        "yarn_name": "Creative Linen",
+        "colorway": "631 Raspberry",
+        "weight_category": "worsted",
+        "fiber": [],
+        "color_family": "Purple",
+        "skeins": 1.0,
+        "yards_per_skein": 219.0,
+        "yards_total": 219.0,
+        "grams_total": 100.0,
+        "notes": null,
+        "project_quantity": "accessory",
+        "is_weaving_yarn": false
+      }
+    ]
+  },
+  "expected": {
+    "recommendation_count_min": 0,
+    "recommendation_count_max": 0,
+    "stash_ids_subset_of_input": true,
+    "no_weight_mixing": true,
+    "filter_confidence": "low"
+  }
+}
