@@ -1,3 +1,5 @@
+"""Exceptions for the Ravelry API client and stash normalizer."""
+
 from __future__ import annotations
 
 
@@ -23,4 +25,4 @@ class RavelryAPIError(RavelryError):
 
 
 class NormalizationError(Exception):
-    pass
+    """Raised when a raw stash item cannot be converted to a StashItem."""

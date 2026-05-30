@@ -1,6 +1,14 @@
+"""Normalizes raw Ravelry stash items into typed domain models.
+
+Provides StashItem (the central domain model), weight/fiber scoring utilities,
+and the normalize_stash pipeline. All application logic works with StashItem;
+raw API models (RawStashItem etc.) should not leak past the normalizer layer.
+"""
+
 from __future__ import annotations
 
 import logging
+import re
 from enum import Enum
 
 from pydantic import BaseModel
@@ -44,9 +52,35 @@ _WEIGHT_MAP: dict[str, WeightCategory] = {
 
 
 def weight_category_from_string(value: str | None) -> WeightCategory:
+    """Map a Ravelry yarn weight name to WeightCategory.
+
+    Returns UNKNOWN for None or any string not in _WEIGHT_MAP.
+    """
     if not value:
         return WeightCategory.UNKNOWN
     return _WEIGHT_MAP.get(value.lower().strip(), WeightCategory.UNKNOWN)
+
+
+def find_weight_in_text(text: str) -> WeightCategory | None:
+    """Find the first weight keyword in free text; longest keyword wins.
+
+    Returns None if no weight keyword is found.
+    """
+    for keyword in sorted(_WEIGHT_MAP, key=len, reverse=True):
+        if keyword in text:
+            return _WEIGHT_MAP[keyword]
+    return None
+
+
+_WEAVING_YARN_RE = re.compile(r"\b\d+/\d+\b")
+
+
+def is_weaving_yarn(yarn_name: str) -> bool:
+    """Return True if the name matches count/ply weaving yarn convention.
+
+    Examples: '16/2 Bamboo', '8/4 Cotton'.
+    """
+    return bool(_WEAVING_YARN_RE.search(yarn_name))
 
 
 class ProjectQuantity(str, Enum):
@@ -76,6 +110,11 @@ _SWEATER_YARDS_BY_WEIGHT: dict[WeightCategory, float] = {
 def project_quantity_from_yards(
     yards: float, weight: WeightCategory
 ) -> ProjectQuantity:
+    """Classify yardage as SCRAP, ACCESSORY, or SWEATER using per-weight thresholds.
+
+    Thresholds are defined in _SWEATER_YARDS_BY_WEIGHT; anything under 200 yards
+    is always SCRAP regardless of weight.
+    """
     if yards < _SCRAP_THRESHOLD:
         return ProjectQuantity.SCRAP
     if yards < _SWEATER_YARDS_BY_WEIGHT[weight]:
@@ -93,6 +132,12 @@ class MatchScore(str, Enum):
 
 
 class StashItem(BaseModel):
+    """Normalized domain model for a single Ravelry stash entry.
+
+    This is the type all application logic works with. Never pass RawStashItem
+    into graph nodes or scoring helpers — always normalize first.
+    """
+
     stash_id: int
     brand: str
     yarn_name: str
@@ -106,6 +151,7 @@ class StashItem(BaseModel):
     grams_total: float | None
     notes: str | None
     project_quantity: ProjectQuantity
+    is_weaving_yarn: bool = False
 
 
 from skeinminder.ravelry.exceptions import NormalizationError  # noqa: E402
@@ -124,6 +170,11 @@ def _primary_pack_skeins(packs: list[RawPack]) -> float | None:
 
 
 def normalize_stash_item(raw: RawStashItem) -> StashItem:
+    """Convert a raw API stash item to a StashItem.
+
+    Skeins resolution order: primary pack skeins → raw.skeins → defaults to 1.0.
+    Raises NormalizationError if yarn is absent or yarn.yardage is None.
+    """
     yarn = raw.yarn
     if yarn is None:
         raise NormalizationError(
@@ -149,11 +200,12 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
     yards_total = skeins * yards_per_skein
     grams_total = skeins * grams_per_skein if grams_per_skein is not None else None
+    yarn_name_str = raw.yarn_name or (yarn.name or "Unknown")
 
     return StashItem(
         stash_id=raw.id,
         brand=brand,
-        yarn_name=raw.yarn_name or (yarn.name or "Unknown"),
+        yarn_name=yarn_name_str,
         colorway=raw.colorway_name,
         weight_category=weight_category,
         fiber=fibers,
@@ -164,10 +216,16 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
         grams_total=grams_total,
         notes=raw.notes,
         project_quantity=project_quantity_from_yards(yards_total, weight_category),
+        is_weaving_yarn=is_weaving_yarn(yarn_name_str),
     )
 
 
 def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
+    """Normalize a list of raw stash items, silently skipping any that fail.
+
+    Items that raise NormalizationError (no linked yarn, no yardage) are logged
+    at DEBUG and excluded from the result rather than raising.
+    """
     results = []
     for item in raw_items:
         try:

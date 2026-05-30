@@ -1,3 +1,5 @@
+"""HTTP client for the Ravelry API with Basic Auth, pagination, and retry."""
+
 from __future__ import annotations
 
 import logging
@@ -33,6 +35,13 @@ def _is_retryable(exc: BaseException) -> bool:
 
 
 class RavelryClient:
+    """Ravelry API client using HTTP Basic Auth.
+
+    Pass username and password for live usage, or transport= in tests to avoid
+    network calls. Retries automatically on 429 and 5xx responses (3 attempts,
+    exponential backoff). Supports use as a context manager.
+    """
+
     def __init__(
         self,
         *,
@@ -68,6 +77,7 @@ class RavelryClient:
     def _get(
         self, path: str, params: dict[str, str | int] | None = None
     ) -> dict[str, object]:
+        """Authenticated GET; retries on 429 and 5xx responses."""
         logger.debug("GET %s params=%s", path, params)
         try:
             response = self._client.get(path, params=params)
@@ -92,6 +102,7 @@ class RavelryClient:
         return RawCurrentUserResponse.model_validate(data).user
 
     def get_stash_list(self, username: str) -> list[RawStashItem]:
+        """Fetch all stash items for a user, following pagination automatically."""
         items: list[RawStashItem] = []
         page = 1
         while True:

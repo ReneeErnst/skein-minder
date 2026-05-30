@@ -19,6 +19,7 @@ from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
     StashItem,
     WeightCategory,
+    is_weaving_yarn,
     normalize_stash,
     normalize_stash_item,
     project_quantity_from_yards,
@@ -87,6 +88,36 @@ def test_weight_order_lightest_to_heaviest() -> None:
     lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
     fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
     assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
+
+
+@pytest.mark.parametrize(
+    "yarn_name,expected",
+    [
+        ("16/2 Bamboo", True),
+        ("8/4 Cotton", True),
+        ("10/2 Mercerised Cotton", True),
+        ("Cascade 220", False),
+        ("Malabrigo Rios", False),
+        ("", False),
+    ],
+)
+def test_is_weaving_yarn(yarn_name: str, expected: bool) -> None:
+    assert is_weaving_yarn(yarn_name) == expected
+
+
+@pytest.mark.parametrize(
+    "yarn_name,expected",
+    [
+        ("16/2 Bamboo", True),
+        ("Cascade 220", False),
+    ],
+)
+def test_normalize_stash_item_sets_is_weaving_yarn(
+    yarn_name: str, expected: bool
+) -> None:
+    raw = _make_raw_item(yarn_name=yarn_name)
+    item = normalize_stash_item(raw)
+    assert item.is_weaving_yarn is expected
 
 
 @pytest.mark.parametrize(
@@ -220,16 +251,23 @@ def test_normalize_stash_item_reads_skeins_from_primary_pack() -> None:
     assert item.yards_total == pytest.approx(4.0 * 200.0)
 
 
-def test_normalize_stash_item_falls_back_to_default_when_pack_skeins_null() -> None:
-    raw = _make_raw_item(skeins=None, yardage=200.0)
-    raw_with_packs = raw.model_copy(
-        update={"packs": [RawPack(id=1, primary_pack_id=None, skeins=None)]}
-    )
-    item = normalize_stash_item(raw_with_packs)
-    assert item.skeins == 1.0
-
-
-def test_normalize_stash_item_falls_back_to_default_when_no_packs() -> None:
-    raw = _make_raw_item(skeins=None, yardage=200.0)
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            _make_raw_item(skeins=None, yardage=200.0).model_copy(
+                update={"packs": [RawPack(id=1, primary_pack_id=None, skeins=None)]}
+            ),
+            id="pack_skeins_null",
+        ),
+        pytest.param(
+            _make_raw_item(skeins=None, yardage=200.0),
+            id="no_packs",
+        ),
+    ],
+)
+def test_normalize_stash_item_falls_back_to_default_skeins(
+    raw: RawStashItem,
+) -> None:
     item = normalize_stash_item(raw)
     assert item.skeins == 1.0

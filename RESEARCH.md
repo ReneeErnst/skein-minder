@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-14_
+_Last updated: 2026-05-16_
 
 ## Working project name
 
@@ -181,9 +181,34 @@ All three blockers resolved. See "Critical Ravelry API discoveries" for full fin
 
 73 tests passing, CI clean. Branch: `phase2b` (not yet merged to main).
 
-### Phases 3–8 — NOT YET STARTED
+### Phase 3 — First LangGraph MVP ✅ COMPLETE
 
-Next up is Phase 3: first LangGraph MVP. See the implementation plan below.
+Graph implemented on `phase3` branch (not yet merged to main). 109 tests passing, CI clean.
+
+**Files built:**
+
+```
+src/skeinminder/
+  graph/
+    __init__.py
+    state.py     # GraphState (TypedDict), StashFilter, Recommendation (Pydantic)
+    nodes.py     # supervisor, project_first_filter, stash_first_filter, recommend, format_output
+    graph.py     # build_graph() → CompiledStateGraph
+  cli.py         # added `recommend` command with --fixture flag
+tests/
+  test_graph_state.py
+  test_supervisor.py
+  test_filters.py
+  test_graph.py
+```
+
+**Known quality issues (fixed in Phase 3b):**
+- LLM recommends weight mixing (sport + DK + worsted in one garment).
+- Weaving yarn (e.g. Maurice Brassard 16/2 Bamboo) passes through filters.
+- Accessory-quantity yarn passes through for sweater goals.
+- LLM forces 3 recommendations even when stash cannot support them.
+
+### Phases 3b–8 — IN PROGRESS
 
 ---
 
@@ -472,84 +497,103 @@ All exit criteria met. Branch: `phase2b`.
 
 ---
 
-### Phase 3 — First LangGraph MVP
+### Phase 3b — Recommendation quality improvements
 
-Goal: build the simplest useful graph supporting both entry modes (project-first and stash-first).
+Goal: fix known domain-correctness problems in the phase 3 graph before moving to pattern integration.
 
-Workflow:
+Spec: `docs/superpowers/specs/2026-05-16-phase3b-recommendation-quality.md`
 
-```text
-User goal / stash filter -> Read stash -> Normalize stash -> Filter to relevant items
-                        -> Recommend project archetypes -> Return ranked options
+Key changes:
+- **Weaving yarn exclusion.** Add `is_weaving_yarn()` heuristic (count/ply naming regex) to `normalizer.py`; add `is_weaving_yarn: bool` to `StashItem`. Both filter nodes exclude weaving yarn. The Ravelry yarn API has no `craft` field — naming is the only reliable signal.
+- **Sweater quantity gate.** `project_first_filter` now requires `project_quantity == SWEATER` for sweater goals (not just "not scrap"). Accessory-quantity yarn cannot satisfy a sweater request.
+- **Fiber suitability filtering.** `project_first_filter` calls the existing `fiber_suitability()` helper and excludes MISMATCH results for the detected garment type.
+- **Prompt domain constraints.** System prompt updated: no weight mixing, yardage adequacy by weight, honest fiber guidance (silk/bamboo not warm), return fewer than 3 if fewer are viable.
+- **Low-confidence path.** New nodes `assess_filter_quality` and `low_confidence_output`. When filtered stash is empty or yardage is clearly insufficient, the graph summarises what was found and asks the user interactively whether to proceed with available yarn or exit. A placeholder message notes that a future version will offer yarn-to-purchase suggestions.
+
+New graph state fields: `filter_confidence: Literal["high", "low", ""]`, `force_recommend: bool`.
+
+Updated graph routing:
+```
+supervisor → filter → assess_filter_quality →
+  high → recommend → format_output → END
+  low  → low_confidence_output →
+           (user confirms) → recommend → format_output → END
+           (user declines) → END
 ```
 
+### Phase 3c — Code quality review
+
+Goal: audit the full codebase for Python best practices before moving to pattern integration.
+
+Scope:
+- Move all deferred imports (inside functions) to module top level.
+- Audit docstrings: all public functions, classes, and modules in both `ravelry/` and `graph/` packages.
+- Remove dead code, commented-out blocks, and unreachable branches.
+- Name any magic values that should be constants.
+- Review test coverage: confirm all meaningful behaviour has deliberate test coverage.
+- Fix anything ruff and mypy do not catch but a human reviewer would flag.
+
+No new features. No spec needed — implement as a single PR with a checklist commit message.
+
+### Phase 4 — Pattern integration
+
+Goal: connect recommendations to real Ravelry patterns. Output is yarn+pattern pairs, not abstract project ideas.
+
+Background: the current graph recommends abstract project archetypes. A knitter cannot act on "a modern structured cardigan" — they need a real pattern. Pattern requirements (weight, yardage, gauge) and stash yarn availability are co-constraints; the recommendation is only useful when both are resolved together.
+
+The yarn-first approach from Phase 3 is preserved: filter stash first, then find patterns that suit the filtered yarn.
+
+Pattern priority order:
+1. Patterns already in the user's Ravelry library (`pdf_in_library: true` / `library/search` endpoint).
+2. Free patterns (`free: true` in `Pattern (list)`).
+3. Popular patterns (sort by `projects` or `rating` in `patterns/search`).
+
+Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`):
+- `GET /patterns/search.json` — full-text + filter search; accepts `craft`, `weight`, `availability`, `sort`.
+- `GET /people/{username}/library/search.json` — search user's owned patterns.
+- `GET /patterns/{id}.json` — pattern detail including `yardage`, `yardage_max`, `yarn_weight`, `craft`, `pdf_in_library`.
+
 Tasks:
-
-- Define graph state (TypedDict with stash items, user_goal, stash_filter, recommendations, requires_approval flag). Both user_goal and stash_filter are optional; at least one required.
-- Add Supervisor node.
-- Add Stash node (calls `RavelryClient` or loads fixture).
-- Add Recommendation node (LLM call with filtered stash context).
-- Add final response formatter.
-- Add LangSmith tracing if available.
-- Wire `--fixture` flag to graph (demo mode without live API).
-
-Notes for next session:
-
-- LangGraph requires `langgraph`, `langchain-anthropic` (or equivalent) as dependencies. Add to `pyproject.toml`.
-- Use `claude-sonnet-4-6` (model ID: `claude-sonnet-4-6`) or `claude-haiku-4-5-20251001` for cost. The most capable current model is `claude-opus-4-7`.
-- Stash filtering before the LLM node is critical — see context window constraint above.
-- The `--fixture` CLI flag pattern is already established in `cli.py`; extend it to the graph.
-
-Cost controls to build in from the start:
-
-- **Never call real LLM in tests.** Mock at the LangGraph node level — same discipline as `FixtureTransport` for the Ravelry client. Unchecked test runs are the main way API costs accumulate.
-- **Configurable model.** Accept a `SKEINMINDER_MODEL` env var so Haiku can be used during development and Sonnet for real demos.
-- **Fixture mode for LLM nodes.** In `--fixture` mode, LLM nodes return canned responses instead of calling the API. Extend the existing CLI flag pattern into the graph layer.
-- **Prompt caching.** The system prompt and normalized stash summary are stable across a session. Use Claude's prompt caching to reduce input token costs by ~90% on repeated queries.
-
-Exit criteria:
-
-- User can ask "What can I make from my stash?"
-- System returns 3 recommendations with structured rationale and risks.
-
-### Phase 4 — Pattern search and candidate matching
-
-Goal: use real pattern data when available.
-
-Tasks:
-
-- Verify Ravelry pattern search endpoint schema (needs logged-in API docs review).
-- Add `PatternScoutAgent`.
-- Match pattern requirements to stash yarn using scoring helpers.
-- Add fallback mode for unavailable API fields.
-- Rank candidates by stash fit, yardage risk, difficulty fit, and project type.
+- Add `RavelryClient` methods for pattern search and pattern detail.
+- Add raw pattern models (`RawPattern`, `RawPatternList`) and a normalized `PatternSummary` domain model.
+- Add `pattern_search` node to the graph: takes filtered stash, searches for matching patterns, returns ranked candidates.
+- Update `recommend` node: prompt now asks LLM to pair yarn candidates with specific pattern candidates.
+- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
+- Update `format_output`: show pattern title and URL alongside yarn and rationale.
+- Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
 
 ### Phase 5 — Human approval checkpoints
 
-Goal: demonstrate safe agentic control.
+Goal: demonstrate safe agentic control before any write operations.
 
 Tasks:
-
 - Add LangGraph interrupt/checkpoint before writes.
 - Show draft payload before side effects.
 - Require explicit approval to continue.
 - Store graph thread state.
 - Add rejection/edit path.
 
+Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
+
 ### Phase 6 — Ravelry project write-back
 
-Goal: create or update a Ravelry project.
+Goal: create or update a Ravelry project from an approved recommendation.
+
+With Phase 4 complete, write-back now has a real pattern reference to include alongside the yarn link.
 
 Tasks:
-
-- Verify official project create/update endpoints and payloads (logged-in docs).
 - Add `draft_ravelry_project` and `create_ravelry_project` tools.
+- Link stash yarn and pattern ID to the created project.
 - Add dry-run mode.
 - Add verification read-back.
 
-### Phase 7 — External productivity integration
+API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-Google Calendar first (value is easy to demo). Schedule swatching and milestones. Optional: Notion project dashboard, Google Drive project brief.
+### Phase 7 — External productivity integration (tentative)
+
+Google Calendar first (value is easy to demo). Schedule swatching and milestones.
+
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 6 before committing to Phase 7.
 
 ### Phase 8 — Demo polish
 
@@ -615,15 +659,18 @@ Answered:
 - ~~What fields does the stash detail endpoint add over the list format?~~ Answered by raw capture (2026-05-14): detail adds `packs` (carries actual skein and yardage data), `photos`, `notes_html`, `yarn_weight_name`, `long_yarn_weight_name`, `personal_yarn_weight`, `user`, `user_id`. `fiber_categories` is absent in both formats. See "Critical Ravelry API discoveries" above for full breakdown. (Was question 6.)
 - ~~Does the stash detail endpoint return `skeins` as a non-null value?~~ Yes, but not as a top-level field. Skein count is in `packs[n].skeins` on the primary pack (the one with `primary_pack_id: null`). It can still be null if the user has not entered a count on Ravelry. (Was question 9.)
 
-Still open (need logged-in Ravelry API docs):
+Still open:
 
 1. What is the exact endpoint and payload for project creation?
 2. Can the API link stash items to a project directly?
 3. Can start date, end date, status, and notes be set at creation time?
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
-6. What fields are available in pattern search vs. pattern detail?
 7. Can project photos be uploaded via the API?
+
+Answered (2026-05-16 — full API docs captured in `docs/ravelry-api/`):
+
+6. **Pattern search vs. pattern detail fields:** `patterns/search` returns `Pattern (list)` — includes `id`, `name`, `permalink`, `free`, `designer`, `first_photo`, `personal_attributes` (queued/favorited). `patterns/show` returns `Pattern (full)` — adds `craft`, `yardage`, `yardage_max`, `yarn_weight`, `gauge`, `pdf_in_library`, `volumes_in_library`, `packs` (suggested yarns), `pattern_categories`, `download_location`. Pattern search also accepts undocumented on-site filter params: `craft`, `weight`, `availability`, `sort` (best/rating/projects).
 
 ---
 
