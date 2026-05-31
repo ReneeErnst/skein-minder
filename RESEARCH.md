@@ -260,6 +260,25 @@ tests/
 
 ---
 
+### Phase 7b — Stash date filtering
+
+Goal: surface when a stash item was added so the graph can correctly answer temporal queries like "use up my oldest fingering weight" or "what have I had sitting around the longest."
+
+Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), but `RawStashItem` drops it today via `extra="ignore"`.
+
+All changes are additive — existing behavior is unchanged when `oldest_first=False` (the default).
+
+Tasks:
+- Add `created_at: str | None = None` to `RawStashItem`.
+- Add `added_date: datetime | None = None` to `StashItem`; parse the Ravelry date string in `normalize_stash_item`.
+- Add `oldest_first: bool = False` to `StashFilter`.
+- Extend supervisor keyword detection for temporal phrases ("oldest", "longest", "been sitting", "first acquired"); set `oldest_first=True` on the resulting `StashFilter`.
+- Update `stash_first_filter` to sort ascending by `added_date` when `oldest_first=True`, with `None` dates last. Apply the same logic to `project_first_filter` for symmetry.
+- Refresh committed fixture files to include representative `created_at` values — re-run the recorder, or add plausible dates manually to the existing 39-item fixture. (Note: `stash_list_full.json` also lacks `created_at` since it was built via `model_dump()` before the field was added; re-recording is the cleanest path.)
+- Add tests: supervisor temporal keyword detection, filter sort-by-age, normalizer `added_date` parsing including timezone-aware strings and `None` input.
+
+---
+
 ## Critical Ravelry API discoveries
 
 These were found through live testing and should save time in future sessions.
@@ -311,6 +330,8 @@ The raw capture (pre-Pydantic) revealed the following about the detail format vs
 - `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
 - `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
 - `long_yarn_weight_name` (detail only) — human-readable weight label
+- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 7b.
+- `updated_at` (both list and detail) — date the item was last edited; same format. Lower priority than `created_at`.
 
 ## API discrepancies (to report to Ravelry)
 
