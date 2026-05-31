@@ -16,18 +16,20 @@ flowchart TD
     SFF["stash_first_filter\nyarn → project candidates"]
     AQ["assess_filter_quality\nhigh / low confidence"]
     LCO["low_confidence_output\nwarn + confirm"]
-    Rec["recommend\nClaude · prompt caching"]
-    Fmt["format_output\nplain-text CLI report"]
+    PS["pattern_search\nlibrary · free · popular · batch detail"]
+    Rec["recommend\nClaude · prompt caching · pattern pairing"]
+    Fmt["format_output\nyarn + pattern + URL"]
 
     User --> Supervisor
     Supervisor -->|project_first| PFF
     Supervisor -->|stash_first| SFF
     PFF --> AQ
     SFF --> AQ
-    AQ -->|high| Rec
+    AQ -->|high| PS
     AQ -->|low| LCO
-    LCO -->|confirmed| Rec
+    LCO -->|confirmed| PS
     LCO -->|declined| END(["END"])
+    PS --> Rec
     Rec --> Fmt
     Fmt --> CLI(["skeinminder recommend"])
 ```
@@ -49,8 +51,12 @@ flowchart TD
         Eval["Eval Suite\nLangfuse dataset · LLM-as-judge · pytest integration"]
     end
 
-    subgraph inprogress ["🔄 Phase 6 — in progress"]
-        Pattern["Pattern Scout Agent\nPatternSummary · search_patterns · get_pattern_details"]
+    subgraph built3 ["✅ Phase 6a — built"]
+        PatternData["Pattern Data Layer\nPatternSummary · RavelryClient pattern methods"]
+    end
+
+    subgraph inprogress ["🔄 Phase 6b — in PR"]
+        PatternSearch["pattern_search node\nyarn+pattern pairs · real Ravelry URLs"]
     end
 
     subgraph future ["📋 Phases 7–8 — planned"]
@@ -59,7 +65,7 @@ flowchart TD
     end
 
     Stash --> Norm --> Graph --> Obs --> Eval
-    Eval --> Pattern --> Gate -->|"✅ approved"| Writer
+    Eval --> PatternData --> PatternSearch --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 
 ```
@@ -87,7 +93,8 @@ flowchart TD
 | 3 | LangGraph MVP — stash-to-recommendation | ✅ Complete |
 | 4 | Tracing and observability (Langfuse) | ✅ Complete |
 | 5 | Eval suite (deterministic assertions + LLM-as-judge) | ✅ Complete |
-| 6 | Pattern search and candidate matching | 🔄 In Progress |
+| 6a | Pattern data layer (client methods, PatternSummary, fixtures) | ✅ Complete |
+| 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | 🔄 In PR |
 | 7 | Human approval checkpoints | 📋 Planned |
 | 8 | Ravelry project write-back | 📋 Planned |
 
