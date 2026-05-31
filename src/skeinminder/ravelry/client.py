@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 import httpx
+from pydantic import ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from skeinminder.config import RAVELRY_BASE_URL, ConfigError
@@ -223,7 +224,7 @@ class RavelryClient:
                 pattern = RawPatternFull.model_validate(value)
                 if pattern.id in requested:
                     result[pattern.id] = pattern
-            except Exception:
+            except ValidationError:
                 logger.debug("Could not parse pattern %s; skipping.", key)
         return result
 

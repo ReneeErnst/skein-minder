@@ -142,3 +142,21 @@ def test_get_pattern_details_api_failure(fixture_client: RavelryClient) -> None:
     with patch.object(fixture_client, "_get", side_effect=err):
         result = fixture_client.get_pattern_details([1001, 1002])
     assert result == {}
+
+
+def test_get_pattern_details_skips_invalid_entry(fixture_client: RavelryClient) -> None:
+    bad_response: dict[str, object] = {
+        "patterns": {
+            "1001": {
+                "id": 1001,
+                "name": "Good Pattern",
+                "permalink": "good",
+                "free": True,
+            },
+            "bad": "not-a-dict",
+        }
+    }
+    with patch.object(fixture_client, "_get", return_value=bad_response):
+        result = fixture_client.get_pattern_details([1001])
+    assert 1001 in result
+    assert result[1001].name == "Good Pattern"
