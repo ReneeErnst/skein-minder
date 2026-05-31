@@ -50,6 +50,10 @@ python_version = "3.13"
 module = "langfuse.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "skeinminder.web.server"
+disable_error_code = ["untyped-decorator"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not eval'"

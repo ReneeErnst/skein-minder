@@ -1,0 +1,65 @@
+"""Endpoint tests for the SkeinMinder web server."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from skeinminder.web.server import create_app
+
+
+def test_recommend_returns_stream_id(normalized_stash: list[Any]) -> None:
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.post("/recommend", json={"goal": "knit a hat"})
+    assert response.status_code == 200
+    assert "stream_id" in response.json()
+    assert isinstance(response.json()["stream_id"], str)
+
+
+def test_replay_404_when_no_last_run(
+    normalized_stash: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.get("/replay")
+    assert response.status_code == 404
+
+
+def test_replay_returns_saved_payload(
+    normalized_stash: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    payload = {"type": "result", "recommendations": [], "formatted_output": "test"}
+    (tmp_path / "last_run.json").write_text(json.dumps(payload))
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.get("/replay")
+    assert response.status_code == 200
+    assert response.json()["formatted_output"] == "test"
+
+
+def test_approve_endpoint_accepts_any_id(normalized_stash: list[Any]) -> None:
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.post("/approve/some-stream-id")
+    assert response.status_code == 202
+
+
+def test_cancel_endpoint_accepts_any_id(normalized_stash: list[Any]) -> None:
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.post("/cancel/some-stream-id")
+    assert response.status_code == 202
+
+
+def test_stream_unknown_id_returns_404(normalized_stash: list[Any]) -> None:
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.get("/stream/nonexistent-id")
+    assert response.status_code == 404
