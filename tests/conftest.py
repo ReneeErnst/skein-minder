@@ -14,6 +14,13 @@ from skeinminder.ravelry.normalizer import StashItem, normalize_stash
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def disable_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Suppress Langfuse tracing in all tests regardless of .env credentials."""
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+
 @pytest.fixture
 def fixture_transport() -> FixtureTransport:
     return FixtureTransport()
