@@ -63,3 +63,26 @@ def test_stream_unknown_id_returns_404(normalized_stash: list[Any]) -> None:
     client = TestClient(app)
     response = client.get("/stream/nonexistent-id")
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"level": "warn", "message": "something off"}, id="warn"),
+        pytest.param(
+            {
+                "level": "error",
+                "message": "something broke",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+            id="error",
+        ),
+    ],
+)
+def test_browser_log_accepted(
+    normalized_stash: list[Any], payload: dict[str, str]
+) -> None:
+    app = create_app(normalized_stash, "test_user", use_fixture=True)
+    client = TestClient(app)
+    response = client.post("/api/logs", json=payload)
+    assert response.status_code == 204

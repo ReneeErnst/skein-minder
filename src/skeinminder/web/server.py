@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 from skeinminder.ravelry.normalizer import StashItem
 from skeinminder.web.events import LAST_RUN_PATH, stream_graph_events
 
+_logger = logging.getLogger(__name__)
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
@@ -24,6 +26,14 @@ class _RecommendRequest(BaseModel):
 
     goal: str
     use_fixture: bool = False
+
+
+class _BrowserLogEntry(BaseModel):
+    """Request body for POST /api/logs."""
+
+    level: Literal["warn", "error"]
+    message: str
+    timestamp: str | None = None
 
 
 def create_app(
@@ -97,6 +107,14 @@ def create_app(
         if not LAST_RUN_PATH.exists():
             raise HTTPException(status_code=404, detail="No previous run found")
         return json.loads(LAST_RUN_PATH.read_text())
+
+    @app.post("/api/logs", status_code=204)
+    async def browser_log(entry: _BrowserLogEntry) -> None:
+        """Receive browser console.warn / console.error and write to server log."""
+        if entry.level == "error":
+            _logger.error("[browser] %s", entry.message)
+        else:
+            _logger.warning("[browser] %s", entry.message)
 
     @app.get("/")
     async def root() -> FileResponse:

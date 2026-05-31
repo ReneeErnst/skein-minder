@@ -1,5 +1,22 @@
 // app.js — phase controller, SSE consumer, card renderer for SkeinMinder web UI.
 
+(function () {
+  const _origWarn = console.warn.bind(console);
+  const _origError = console.error.bind(console);
+
+  function _remoteLog(level, args) {
+    const message = Array.from(args).map(String).join(" ");
+    fetch("/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level, message, timestamp: new Date().toISOString() }),
+    }).catch(() => {});
+  }
+
+  console.warn = function (...args) { _origWarn(...args); _remoteLog("warn", args); };
+  console.error = function (...args) { _origError(...args); _remoteLog("error", args); };
+})();
+
 const _STATUS_TEXT = {
   supervisor:            "Interpreting your goal…",
   project_first_filter:  "Filtering your stash…",
