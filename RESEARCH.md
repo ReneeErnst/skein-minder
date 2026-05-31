@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31_
+_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15)_
 
 ## Working project name
 
@@ -228,7 +228,7 @@ src/skeinminder/web/
                  #   POST /recommend → stream_id (non-blocking)
                  #   GET /stream/{id} → SSE
                  #   GET /replay → last_run.json fallback
-                 #   POST /approve/{id}, POST /cancel/{id} → Phase 9 stubs
+                 #   POST /approve/{id}, POST /cancel/{id} → Phase 12 stubs
   static/
     index.html   # three-phase structure (phase-input / phase-running / phase-results)
     app.js       # SSE consumer, phase controller, card renderer, Load last run
@@ -260,7 +260,7 @@ tests/
 
 ---
 
-### Phase 7b — Stash date filtering
+### Phase 8 — Stash date filtering
 
 Goal: surface when a stash item was added so the graph can correctly answer temporal queries like "use up my oldest fingering weight" or "what have I had sitting around the longest."
 
@@ -276,6 +276,70 @@ Tasks:
 - Update `stash_first_filter` to sort ascending by `added_date` when `oldest_first=True`, with `None` dates last. Apply the same logic to `project_first_filter` for symmetry.
 - Refresh committed fixture files to include representative `created_at` values — re-run the recorder, or add plausible dates manually to the existing 39-item fixture. (Note: `stash_list_full.json` also lacks `created_at` since it was built via `model_dump()` before the field was added; re-recording is the cleanest path.)
 - Add tests: supervisor temporal keyword detection, filter sort-by-age, normalizer `added_date` parsing including timezone-aware strings and `None` input.
+
+---
+
+### Phase 9 — Guided UX Wizard (Modes 2 & 3)
+
+Goal: Replace the single free-text input with a guided two-step wizard. Step 1 presents the three intent modes (Mode 1 rendered but disabled pending Phase 10). Modes 2 and 3 are fully implemented here. This removes the need for users to know supervisor trigger phrases and enables pre-graph stash disambiguation for Mode 3.
+
+**Dependency:** Phase 8 (stash date filtering) should complete first so that `added_date` is available on `StashItem` and can be included in the `GET /stash` response. If Phase 9 ships before Phase 8, the `/stash` endpoint omits `added_date` and the Mode 3 search UI cannot display yarn age; the field can be added in Phase 8 without breaking Phase 9's other work.
+
+**Step 1 — Mode selector:**
+
+The `phase-input` screen is preceded by a new `phase-mode` screen with three option cards. Mode 1 is visible but disabled with a "Coming soon" label. Selecting Mode 2 or 3 transitions to a mode-appropriate `phase-input` form.
+
+**Mode 2 — "Make something with my stash":**
+
+Step 2 is the existing text box with a smarter label and placeholder: "Describe what you'd like to make — garment type, weight, skill level, any preferences." No backend changes. The supervisor runs as today (project_first path).
+
+**Mode 3 — "Use a specific yarn":**
+
+Step 2 shows a yarn search field. As the user types, results filter against `/stash` data in real time. The user confirms a match and proceeds, or falls through to a free-text input if they want to describe by type rather than pick a specific item.
+
+Pre-graph disambiguation:
+- Specific yarn confirmed: graph runs with `stash_filter=StashFilter(specific_stash_id=<id>)` pre-set and `mode="stash_first"` injected into initial `GraphState`. Supervisor respects a pre-set mode rather than reclassifying.
+- Yarn not found before submission: return an error immediately — no graph run, no LLM call.
+- Browse/type fallback: supervisor runs as today's stash_first path.
+
+`stash_first_filter` already handles `specific_stash_id` correctly (filters to exactly that item).
+
+**Backend changes:**
+- `GET /stash` endpoint: returns normalized stash as a lightweight list — `{stash_id, brand, yarn_name, colorway, weight_category, yards_total}` per item — for client-side search.
+- `POST /recommend` body gains `mode: Literal["project_first", "stash_first"] | None` and `stash_id: int | None`. When provided, these are injected into the initial `GraphState` before the graph runs.
+- `supervisor` node: if `state["mode"]` is already set (non-empty), skip mode classification but still run temporal keyword extraction (Phase 8's `oldest_first` detection). Only the routing decision is bypassed — filter enrichment still applies.
+- `GET /stash` response: include `added_date` when populated (requires Phase 8); omit the field gracefully if Phase 8 has not shipped.
+
+**Frontend changes:**
+- `index.html`: new `phase-mode` section with three option cards.
+- `app.js`: initial phase is `phase-mode`; mode selection advances to `phase-input` with the appropriate form. Mode 3 fetches `/stash` on first load, filters client-side as the user types, and shows a confirmation step before calling `/recommend`.
+- `style.css`: mode card styles.
+
+**Speed and cost benefits:**
+- Mode 3 with a confirmed yarn: supervisor skips classification, `recommend` node receives a 1-item filtered stash rather than up to 20 candidates — smaller, cheaper LLM call. Failed yarn lookup aborts before any graph work.
+- Mode 2: no backend speed change; clarity improvement only.
+
+---
+
+### Phase 10 — Allow Purchase Mode (Mode 1)
+
+Goal: Implement the "open to buying yarn" mode, completing the three-mode wizard from Phase 9. The LLM can recommend projects that require purchasing yarn, while still prioritizing stash matches when available.
+
+**UX changes:**
+- Enable Mode 1 card in the wizard (remove "Coming soon" state).
+- Mode 1 `phase-input`: same text box as Mode 2 with a different placeholder: "What would you like to make? We'll use your stash where possible and suggest yarn to buy if needed."
+- Result cards: when `purchase_suggestion` is present, render a "You may need to buy yarn" section below the rationale.
+
+**Backend changes:**
+- `allow_purchase: bool` added to `GraphState` (default `False`).
+- `POST /recommend` body gains `allow_purchase: bool`; set to `True` for Mode 1.
+- `recommend` prompt: when `allow_purchase=True`, the stash-only constraint is lifted. The prompt adds: "If no stash yarn is a good fit, you may suggest that the user purchase yarn for this project. Populate `purchase_suggestion` with a brief description of what to look for (weight, fiber, yardage)."
+- `Recommendation` model: add `purchase_suggestion: str | None = None`.
+- `format_output`: render `Purchase suggestion: ...` line when set.
+- `_build_result_payload` in `events.py`: include `purchase_suggestion` in the SSE result payload.
+- Tests: unit tests for the modified `recommend` prompt path; update eval golden examples to cover Mode 1 behavior.
+
+**Key distinction from Mode 2:** Mode 2 recommendations always reference a stash yarn. Mode 1 recommendations may include a `purchase_suggestion` instead of or alongside `yarn_candidate_ids` when no stash yarn is a good fit.
 
 ---
 
@@ -330,7 +394,7 @@ The raw capture (pre-Pydantic) revealed the following about the detail format vs
 - `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
 - `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
 - `long_yarn_weight_name` (detail only) — human-readable weight label
-- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 7b.
+- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 8.
 - `updated_at` (both list and detail) — date the item was last edited; same format. Lower priority than `created_at`.
 
 ## API discrepancies (to report to Ravelry)
@@ -359,29 +423,39 @@ LangGraph is a good fit because the project needs state, routing, persistence, a
 
 ## Product concept
 
-### Two entry modes
+### Three entry modes
 
-The system supports two directions of use. Both share the same downstream filtering and recommendation logic — only the starting point differs.
+The system supports three directions of use, presented to the user as a mode selector in the web UI. All three share the same downstream filtering and recommendation logic — only the starting point and purchasing constraint differ.
 
-**Project-first (goal-directed):** User specifies a project goal and the agent finds matching stash yarn.
+**Mode 1 — Open ("I want to make something new"):** User describes a project goal; recommendations use stash yarn where available but may suggest purchasing yarn if no stash item fits well. This is the least constrained mode.
+
+```text
+"I want to knit a colorwork yoke sweater."
+  -> filter stash by weight, yardage, fiber suitability
+  -> recommend projects; if stash yarn is insufficient, include a purchase suggestion
+```
+
+**Mode 2 — Stash-constrained ("I want to make something with my stash"):** User describes a project goal; recommendations are constrained to stash yarn only. Equivalent to the original project-first behavior.
 
 ```text
 "I want a fall cardigan, medium difficulty, something I can finish in 6 weeks."
   -> filter stash by weight, yardage, fiber suitability
   -> rank candidates
-  -> return recommendations
+  -> return recommendations (stash yarn only)
 ```
 
-**Stash-first:** User specifies a stash item or yarn type and the agent finds fitting project archetypes.
+**Mode 3 — Yarn-specific ("I want to use a specific yarn"):** User identifies a yarn from their stash (by name search or free text); the agent finds fitting project archetypes for that yarn. Pre-graph disambiguation means the graph gets a single confirmed stash item rather than a filtered list — smaller LLM context, faster response.
 
 ```text
-"What can I make with my 900 yards of sport weight silk?"
-"Help me use up this merino worsted."
-  -> locate matching stash items
-  -> recommend project archetypes that fit
+"I want to use my Cascade 220 Superwash in the teal colorway."
+  -> user searches stash, confirms the match
+  -> graph runs with specific_stash_id pre-set
+  -> recommend project archetypes that fit that yarn
 ```
 
-The graph state must accommodate both entry points from Phase 3 onward. The input fields `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present.
+Modes 2 and 3 are implemented in Phase 9. Mode 1 is implemented in Phase 10.
+
+The graph state must accommodate all three entry points. `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present. `allow_purchase` (Phase 10) controls whether Mode 1's looser constraint is active.
 
 ### Core workflow
 
@@ -689,7 +763,7 @@ Broken into three subphases:
 
 **Phase UI-b — Frontend structure + graph animation:** Three-phase page (input → running → results), vis-network node animation driven by SSE events, status text per node in plain English. UI-a and UI-b can run as parallel subagents — the SSE event schema is the shared contract.
 
-**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 9 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 9).
+**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 12 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 12).
 
 **SSE event schema (the UI-a/UI-b contract):**
 ```
@@ -719,9 +793,9 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
-### Phase 8 — Performance and cleanup backlog
+### Phase 11 — Performance and cleanup backlog
 
-_Identified during design review on 2026-05-31. These are not blocking Phase 7 Web UI but should land before Phase 9 adds human-in-the-loop complexity. Can run in parallel with Phase 7._
+_Identified during design review on 2026-05-31. These are not blocking Phase 7 Web UI but should land before Phase 12 adds human-in-the-loop complexity. Can run in parallel with Phase 7._
 
 **1. Parallel pattern search and stash filtering (LangGraph fan-out)**
 
@@ -750,15 +824,15 @@ The `recommend` node blocks for 2–5 seconds before the user sees anything. The
 
 **5. `click.confirm` → LangGraph `interrupt()`**
 
-`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 9 anyway; doing it here cleans up the code before more complexity lands.
+`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 12 anyway; doing it here cleans up the code before more complexity lands.
 
 **6. Supervisor robustness**
 
-The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 9 if not blocking demo.
+The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 12 if not blocking demo.
 
 ---
 
-### Phase 9 — Human approval checkpoints
+### Phase 12 — Human approval checkpoints
 
 Goal: demonstrate safe agentic control before any write operations.
 
@@ -770,11 +844,11 @@ Tasks:
 - Store graph thread state.
 - Add rejection/edit path.
 
-**Web UI integration:** Phase UI-c builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 9 wires the real `interrupt()` call — no frontend changes needed beyond what Phase UI-c already delivers.
+**Web UI integration:** Phase UI-c builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 12 wires the real `interrupt()` call — no frontend changes needed beyond what Phase UI-c already delivers.
 
 Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
 
-### Phase 10 — Ravelry project write-back
+### Phase 13 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
@@ -788,13 +862,13 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 11 — External productivity integration (tentative)
+### Phase 14 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
 Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 10 before committing to Phase 11.
 
-### Phase 12 — Documentation polish
+### Phase 15 — Documentation polish
 
 The demo UI itself (fixture mode, fallback, animated graph, result cards) is delivered by Phase UI. This phase covers remaining documentation artifacts: screenshots/GIFs for the README, an architecture diagram, sample prompt scripts, and a known-limitations section.
 

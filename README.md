@@ -63,7 +63,7 @@ flowchart TD
         WebUI["Web UI\nFastAPI · SSE · vis-network · Ravelry-inspired styling"]
     end
 
-    subgraph future ["📋 Phases 9–10 — planned"]
+    subgraph future ["📋 Phases 12–13 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
@@ -102,9 +102,12 @@ flowchart TD
 | 6a | Pattern data layer (client methods, PatternSummary, fixtures) | ✅ Complete |
 | 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
 | 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
-| 8 | Performance and cleanup (parallel pattern search, async pagination, streaming) | 📋 Planned |
-| 9 | Human approval checkpoints | 📋 Planned |
-| 10 | Ravelry project write-back | 📋 Planned |
+| 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | 📋 Planned |
+| 9 | Guided UX wizard — Modes 2 & 3 (stash-constrained and yarn-specific entry paths) | 📋 Planned |
+| 10 | Allow purchase mode — Mode 1 (open recommendations with yarn purchase suggestions) | 📋 Planned |
+| 11 | Performance and cleanup (parallel pattern search, async pagination, streaming) | 📋 Planned |
+| 12 | Human approval checkpoints | 📋 Planned |
+| 13 | Ravelry project write-back | 📋 Planned |
 
 ---
 

@@ -146,7 +146,7 @@ supervisor → [project_first_filter | stash_first_filter]
              low:  low_confidence_output → (force_recommend?) pattern_search → recommend | END
 ```
 
-- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs.
+- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs. Phase 9 will allow the web UI to pre-set `mode` in `GraphState`; when mode is already set, supervisor skips classification but still runs filter extraction (weight, yardage, temporal keywords).
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords; both sort descending by yards.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `pattern_search` or `low_confidence_output` accordingly.
 - **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
@@ -170,9 +170,10 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
 - Tests use `FixtureTransport` (injected into `RavelryClient` via the `transport=` kwarg) — never hit the live Ravelry API in tests.
-- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 9 stub).
-- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 9 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
+- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 12 stub).
+- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 12 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
 - Every future write tool needs a dry-run mode.
+- The web UI is being extended to a three-mode wizard (Phases 9–10): Mode 1 open/allow-purchase, Mode 2 stash-constrained project-first, Mode 3 yarn-specific stash-first. New `GraphState` fields `allow_purchase: bool` (Phase 10) will be added; avoid hardcoding assumptions that recommendations must always draw from stash yarn.
 
 ## Git workflow
 
