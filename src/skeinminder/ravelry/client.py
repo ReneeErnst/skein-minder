@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 import httpx
+from pydantic import ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from skeinminder.config import RAVELRY_BASE_URL, ConfigError
@@ -19,6 +20,11 @@ from skeinminder.ravelry.models import (
     RawStashItem,
     RawStashListResponse,
     RawUser,
+)
+from skeinminder.ravelry.patterns import (
+    RawLibrarySearchResponse,
+    RawPattern,
+    RawPatternFull,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,6 +126,121 @@ class RavelryClient:
     def get_stash_detail(self, username: str, stash_id: int) -> RawStashItem:
         data = self._get(f"/people/{username}/stash/{stash_id}.json")
         return RawStashDetailResponse.model_validate(data).stash
+
+    def get_library_pattern_ids(self, username: str) -> set[int]:
+        """Return the set of pattern IDs in the user's Ravelry library.
+
+        Paginates /people/{username}/library/search.json?type=pattern using
+        page_size=100. Returns an empty set on any API failure — callers treat
+        absence of library data as graceful degradation, not an error.
+        """
+        ids: set[int] = set()
+        page = 1
+        try:
+            while True:
+                data = self._get(
+                    f"/people/{username}/library/search.json",
+                    params={"type": "pattern", "page": page, "page_size": 100},
+                )
+                parsed = RawLibrarySearchResponse.model_validate(data)
+                for vol in parsed.volumes:
+                    if vol.pattern_id is not None:
+                        ids.add(vol.pattern_id)
+                if page >= parsed.paginator.pages:
+                    break
+                page += 1
+        except (
+            RavelryAPIError,
+            RavelryAuthError,
+            RavelryRateLimitError,
+            ValidationError,
+        ):
+            logger.warning(
+                "Library pattern ID fetch failed on page %d;"
+                " returning %d IDs collected so far.",
+                page,
+                len(ids),
+            )
+            return ids
+        return ids
+
+    def search_patterns(
+        self,
+        weight: str,
+        query: str | None = None,
+        availability: str | None = None,
+        sort: str = "projects",
+        page_size: int = 20,
+    ) -> list[RawPattern]:
+        """Search the Ravelry pattern database for knitting patterns by weight.
+
+        Always passes craft=knitting. Returns an empty list on any API failure.
+
+        Args:
+            weight: Ravelry weight slug (e.g. "worsted", "dk").
+            query: Optional goal keyword (e.g. "cardigan").
+            availability: Optional filter (e.g. "free").
+            sort: Sort order — "projects" (default) or "best".
+            page_size: Number of results per page. Defaults to 20.
+        """
+        params: dict[str, str | int] = {
+            "craft": "knitting",
+            "weight": weight,
+            "sort": sort,
+            "page_size": page_size,
+        }
+        if query:
+            params["query"] = query
+        if availability:
+            params["availability"] = availability
+
+        try:
+            data = self._get("/patterns/search.json", params=params)
+        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+            logger.warning("Pattern search failed; returning empty list.")
+            return []
+
+        raw_list = data.get("patterns", [])
+        if not isinstance(raw_list, list):
+            return []
+        result_patterns: list[RawPattern] = []
+        for item in raw_list:
+            try:
+                result_patterns.append(RawPattern.model_validate(item))
+            except ValidationError:
+                logger.debug("Could not parse pattern entry; skipping.")
+        return result_patterns
+
+    def get_pattern_details(self, pattern_ids: list[int]) -> dict[int, RawPatternFull]:
+        """Fetch full pattern details for a list of IDs in a single batch call.
+
+        Calls /patterns.json?ids=ID1+ID2+... Returns a map of pattern_id to
+        RawPatternFull. IDs absent from the response are simply missing from the
+        map — callers handle partial results. Returns an empty dict on complete failure.
+        """
+        if not pattern_ids:
+            return {}
+
+        ids_param = " ".join(str(i) for i in pattern_ids)
+        try:
+            data = self._get("/patterns.json", params={"ids": ids_param})
+        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+            logger.warning("Pattern detail fetch failed; returning empty dict.")
+            return {}
+
+        raw_map = data.get("patterns", {})
+        if not isinstance(raw_map, dict):
+            return {}
+        requested = set(pattern_ids)
+        result: dict[int, RawPatternFull] = {}
+        for key, value in raw_map.items():
+            try:
+                pattern = RawPatternFull.model_validate(value)
+                if pattern.id in requested:
+                    result[pattern.id] = pattern
+            except ValidationError:
+                logger.debug("Could not parse pattern %s; skipping.", key)
+        return result
 
     def close(self) -> None:
         self._client.close()

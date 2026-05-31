@@ -1,0 +1,15 @@
+{
+  "patterns": [
+    {"id": 2001, "name": "Classic Raglan Sweater", "permalink": "classic-raglan-sweater", "free": false},
+    {"id": 2002, "name": "Mossy Cardigan", "permalink": "mossy-cardigan", "free": false},
+    {"id": 1002, "name": "Lace Shawlette", "permalink": "lace-shawlette", "free": true},
+    {"id": 2003, "name": "Textured Pullover", "permalink": "textured-pullover", "free": false},
+    {"id": 2004, "name": "Cozy Toque", "permalink": "cozy-toque", "free": false}
+  ],
+  "paginator": {
+    "page": 1,
+    "page_size": 20,
+    "results": 5,
+    "page_count": 1
+  }
+}

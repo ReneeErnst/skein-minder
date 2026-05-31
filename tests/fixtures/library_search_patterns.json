@@ -1,0 +1,13 @@
+{
+  "paginator": {
+    "page": 1,
+    "page_size": 100,
+    "results": 3,
+    "page_count": 1
+  },
+  "volumes": [
+    {"id": 100, "pattern_id": 1001},
+    {"id": 101, "pattern_id": 1002},
+    {"id": 102, "pattern_id": null}
+  ]
+}
