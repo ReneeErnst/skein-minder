@@ -25,6 +25,8 @@ skeinminder stash                      # print normalized stash (requires .env c
 skeinminder stash --fixture            # same, using committed fixture files (no network)
 skeinminder recommend "<goal>"         # run the full graph and print recommendations (requires ANTHROPIC_API_KEY)
 skeinminder recommend "<goal>" --fixture  # same, using fixture stash instead of live Ravelry
+skeinminder web                        # start browser UI at http://localhost:8000 (requires ANTHROPIC_API_KEY)
+skeinminder web --fixture              # same, using fixture stash + pattern data (no network)
 
 uv run python -m skeinminder.ravelry.recorder        # record fresh fixtures from live API
 uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to tests/fixtures/raw/ (gitignored)
@@ -47,6 +49,7 @@ docker compose down -v # stop and delete volumes (reset all Langfuse data)
 - langchain-anthropic for LLM calls (structured output via `with_structured_output`)
 - Pydantic v2 for models (`extra="ignore"` everywhere — Ravelry API fields evolve)
 - httpx for Ravelry API client, with tenacity retry on 429/5xx
+- FastAPI + uvicorn[standard] for the web UI; SSE via `asyncio.Queue`
 - langfuse for graph tracing (`@observe` decorators, self-hosted via Docker Compose)
 - pytest, ruff (E/F/I rules, line-length 88), mypy strict
 
@@ -71,7 +74,7 @@ LANGFUSE_HOST=          # defaults to http://localhost:3000
 
 Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
 
-## What's built (Phases 1–6b)
+## What's built (Phases 1–7)
 
 ```
 src/skeinminder/
@@ -82,6 +85,7 @@ src/skeinminder/
     normalizer.py       # normalize_stash() → StashItem; weight/fiber scoring utilities
     patterns.py         # Phase 6a: RawPattern, RawPatternFull, RawLibrarySearchResponse,
                         #   PatternSummary, normalize_pattern()
+                        #   Phase 7: + RawFirstPhoto; PatternSummary gains photo_url
     sanitizer.py        # redacts PII before fixture files are committed
     recorder.py         # one-shot script to capture live API responses as fixture JSON
     exceptions.py       # RavelryAPIError, RavelryAuthError, RavelryRateLimitError, NormalizationError
@@ -96,22 +100,37 @@ src/skeinminder/
     nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality,
                    #   low_confidence_output, pattern_search, recommend, format_output
                    #   Phase 6b: + pattern_search node; recommend + format_output updated
+  web/             # Phase 7: browser UI
+    __init__.py
+    events.py      # stream_graph_events() async generator; _build_result_payload(); _sse()
+                   #   bridges LangGraph astream_events → SSE; saves last_run.json for /replay
+    server.py      # create_app(stash, ravelry_username, use_fixture) FastAPI factory
+                   #   endpoints: POST /recommend, GET /stream/{id}, GET /replay,
+                   #   POST /approve/{id}, POST /cancel/{id}, GET / (static)
+    static/
+      index.html   # three-phase page (phase-input / phase-running / phase-results)
+      app.js       # SSE consumer, phase controller, card renderer
+      graph.js     # vis-network topology + setNodeState(name, state)
+      style.css    # Ravelry-inspired palette (cream/burgundy/green)
   scripts/
     setup_langfuse_dataset.py  # idempotent bootstrap: registers Anthropic model pricing in Langfuse, then creates skeinminder-eval-v1 dataset and upserts golden examples
   config.py        # get_ravelry_credentials() from .env
   cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`
                    #   Phase 6b: _load_stash returns (stash, username); _run_recommend takes ravelry_username + use_fixture
+                   #   Phase 7: + `skeinminder web [--port] [--fixture]`
   eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()
                    #   Phase 6b: EvalExpected gains pattern_ids_from_candidates; run_example uses fixture transport
   observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
   conftest.py      # fixture_client and fixture_transport fixtures (FixtureTransport now lives in src/)
   test_eval.py     # unit tests (CI) + @pytest.mark.eval integration tests (real LLM)
+  test_web_events.py  # Phase 7: 9 tests for _sse, _build_result_payload, stream_graph_events
+  test_web_server.py  # Phase 7: 6 endpoint tests via FastAPI TestClient
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
   fixtures/eval/   # three golden examples (project-first, stash-first, low-confidence); example-schema.json documents the shape
   fixtures/pattern_search_free.json      # Phase 6a: free-pattern search fixture
   fixtures/pattern_search_popular.json   # Phase 6a: popular-pattern search fixture
-  fixtures/pattern_detail.json           # Phase 6a: batch pattern detail fixture
+  fixtures/pattern_detail.json           # Phase 6a: batch pattern detail (Phase 7: pattern 1001 gets first_photo)
   fixtures/library_search_patterns.json  # Phase 6a: user library search fixture
 docker-compose.yml # Langfuse v2 self-hosted + Postgres; pre-seeded org/project/API keys
 ```
@@ -152,6 +171,7 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
 - Tests use `FixtureTransport` (injected into `RavelryClient` via the `transport=` kwarg) — never hit the live Ravelry API in tests.
 - No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 9 stub).
+- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 9 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
 - Every future write tool needs a dry-run mode.
 
 ## Git workflow

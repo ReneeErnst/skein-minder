@@ -208,7 +208,55 @@ tests/
 - Accessory-quantity yarn passes through for sweater goals.
 - LLM forces 3 recommendations even when stash cannot support them.
 
-### Phases 3b–5 — COMPLETE (merged to main)
+### Phases 3b–6b — COMPLETE (merged to main)
+
+### Phase 7 — Web UI ✅ COMPLETE (PR #11)
+
+Browser-based UI that wraps the existing LangGraph pipeline. The graph runs
+server-side; the frontend streams progress via SSE and renders recommendation
+cards when done.
+
+**Files built:**
+
+```
+src/skeinminder/web/
+  __init__.py
+  events.py      # stream_graph_events() — astream_events → SSE bridge
+                 #   _build_result_payload() enriches recommendations with photo_url
+                 #   saves last_run.json after each run
+  server.py      # create_app() FastAPI factory
+                 #   POST /recommend → stream_id (non-blocking)
+                 #   GET /stream/{id} → SSE
+                 #   GET /replay → last_run.json fallback
+                 #   POST /approve/{id}, POST /cancel/{id} → Phase 9 stubs
+  static/
+    index.html   # three-phase structure (phase-input / phase-running / phase-results)
+    app.js       # SSE consumer, phase controller, card renderer, Load last run
+    graph.js     # vis-network 8-node topology; setNodeState(name, state)
+    style.css    # cream/burgundy/green palette, staggered card animation
+src/skeinminder/ravelry/patterns.py
+                 # + RawFirstPhoto model; PatternSummary gains photo_url field
+src/skeinminder/cli.py
+                 # + skeinminder web [--port PORT] [--fixture]
+tests/
+  test_web_events.py   # 9 tests: _sse, _build_result_payload, stream_graph_events
+  test_web_server.py   # 6 endpoint tests via FastAPI TestClient
+```
+
+**Architecture decisions:**
+
+- `create_app()` factory loads stash once at startup; each `/recommend` creates
+  an `asyncio.Queue` and fires a background task via `asyncio.create_task`.
+- `stream_graph_events()` is an async generator that wraps LangGraph's
+  `astream_events(version="v2")` — filtering to known node names only.
+- `_build_result_payload()` joins each `Recommendation` with its matching
+  `PatternSummary` (by `pattern_id`) to attach `photo_url` for card images.
+- The LangGraph mock in streaming tests uses actual `Recommendation` objects
+  (not plain dicts), which is what LangGraph returns in Python `astream_events`.
+- mypy `disable_error_code = ["untyped-decorator"]` applied to `web.server`
+  module — FastAPI decorators are untyped in strict mode.
+
+**194 tests passing, CI clean.**
 
 ---
 
