@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
+from skeinminder.ravelry.client import RavelryClient
+from skeinminder.ravelry.exceptions import RavelryAPIError
 from skeinminder.ravelry.patterns import (
     RawPatternFull,
     RawPatternYarnWeight,
@@ -64,3 +68,26 @@ def test_normalize_pattern_fields() -> None:
     assert result.yardage_min == 1200
     assert result.yardage_max == 1800
     assert result.weight_name == "DK"
+
+
+def test_get_library_pattern_ids_happy_path(fixture_client: RavelryClient) -> None:
+    # Fixture has pattern_ids 1001, 1002, and one null entry — null must be excluded
+    result = fixture_client.get_library_pattern_ids("[REDACTED]")
+    assert result == {1001, 1002}
+
+
+def test_get_library_pattern_ids_empty_volumes(fixture_client: RavelryClient) -> None:
+    empty_response: dict[str, object] = {
+        "paginator": {"page": 1, "page_size": 100, "results": 0, "page_count": 1},
+        "volumes": [],
+    }
+    with patch.object(fixture_client, "_get", return_value=empty_response):
+        result = fixture_client.get_library_pattern_ids("testuser")
+    assert result == set()
+
+
+def test_get_library_pattern_ids_api_failure(fixture_client: RavelryClient) -> None:
+    err = RavelryAPIError(500, "/test")
+    with patch.object(fixture_client, "_get", side_effect=err):
+        result = fixture_client.get_library_pattern_ids("testuser")
+    assert result == set()

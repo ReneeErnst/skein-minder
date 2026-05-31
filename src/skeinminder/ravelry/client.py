@@ -20,6 +20,7 @@ from skeinminder.ravelry.models import (
     RawStashListResponse,
     RawUser,
 )
+from skeinminder.ravelry.patterns import RawLibrarySearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,35 @@ class RavelryClient:
     def get_stash_detail(self, username: str, stash_id: int) -> RawStashItem:
         data = self._get(f"/people/{username}/stash/{stash_id}.json")
         return RawStashDetailResponse.model_validate(data).stash
+
+    def get_library_pattern_ids(self, username: str) -> set[int]:
+        """Return the set of pattern IDs in the user's Ravelry library.
+
+        Paginates /people/{username}/library/search.json?type=pattern using
+        page_size=100. Returns an empty set on any API failure — callers treat
+        absence of library data as graceful degradation, not an error.
+        """
+        ids: set[int] = set()
+        page = 1
+        try:
+            while True:
+                data = self._get(
+                    f"/people/{username}/library/search.json",
+                    params={"type": "pattern", "page": page, "page_size": 100},
+                )
+                parsed = RawLibrarySearchResponse.model_validate(data)
+                for vol in parsed.volumes:
+                    if vol.pattern_id is not None:
+                        ids.add(vol.pattern_id)
+                if page >= parsed.paginator.pages:
+                    break
+                page += 1
+        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+            logger.warning(
+                "Library pattern ID fetch failed; continuing without library data."
+            )
+            return set()
+        return ids
 
     def close(self) -> None:
         self._client.close()
