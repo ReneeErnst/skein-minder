@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check export-traces help
+.PHONY: install lint format typecheck test check export-traces services web up down down-clean help
 .DEFAULT_GOAL := help
 
 install: ## install dependencies
@@ -34,6 +34,25 @@ eval: ## run eval suite (requires ANTHROPIC_API_KEY and Langfuse running)
 
 export-traces: ## export recent Langfuse traces to traces_export.json (requires Langfuse running)
 	uv run python -m skeinminder.scripts.export_traces
+
+services: ## start Langfuse + Postgres and run one-time dataset bootstrap (model pricing + eval dataset)
+	docker compose up -d
+	@echo "Waiting for Langfuse…"
+	@until curl -sf http://localhost:3000/api/public/health > /dev/null 2>&1; do printf '.'; sleep 2; done
+	@echo " ready."
+	uv run python -m skeinminder.scripts.setup_langfuse_dataset
+
+web: ## start web UI in fixture mode at http://localhost:8000 (pass PORT=N to change port)
+	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),)
+
+up: services ## start everything: Langfuse + web UI (Ctrl+C stops the UI; Langfuse keeps running)
+	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),)
+
+down: ## stop Langfuse containers, keep history (volumes preserved)
+	docker compose down
+
+down-clean: ## stop Langfuse and wipe all data (next 'make up' re-initializes model pricing + eval dataset)
+	docker compose down -v
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
