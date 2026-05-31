@@ -64,6 +64,14 @@ def test_recommend_fixture_flag_returns_output() -> None:
     assert "Project 3" in result.output
 
 
+def test_web_command_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["web", "--help"])
+    assert result.exit_code == 0
+    assert "--port" in result.output
+    assert "--fixture" in result.output
+
+
 def test_recommend_no_fixture_fails_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

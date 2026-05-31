@@ -87,6 +87,25 @@ def eval(example_id: str | None) -> None:
         raise SystemExit(1)
 
 
+@cli.command()
+@click.option("--port", default=8000, show_default=True, help="Port to listen on.")
+@click.option(
+    "--fixture",
+    is_flag=True,
+    help="Use fixture stash and pattern data instead of live Ravelry API.",
+)
+def web(port: int, fixture: bool) -> None:
+    """Start the SkeinMinder web UI."""
+    import uvicorn
+
+    from skeinminder.web.server import create_app
+
+    stash, username = _load_stash(fixture)
+    app = create_app(stash, username, use_fixture=fixture)
+    click.echo(f"SkeinMinder running at http://localhost:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
 @observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
 def _run_recommend(
     goal: str,
