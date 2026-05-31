@@ -20,6 +20,9 @@ def _make_state(user_input: str) -> GraphState:
         formatted_output=None,
         filter_confidence="",
         force_recommend=False,
+        ravelry_username="",
+        use_fixture=False,
+        pattern_candidates=[],
     )
 
 

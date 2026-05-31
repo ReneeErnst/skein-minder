@@ -28,7 +28,7 @@ def cli() -> None:
 )
 def stash(fixture: bool) -> None:
     """Print a normalized summary of your Ravelry stash."""
-    items = _load_stash(fixture)
+    items, _ = _load_stash(fixture)
     _print_summary(items)
 
 
@@ -41,8 +41,10 @@ def stash(fixture: bool) -> None:
 )
 def recommend(goal: str, fixture: bool) -> None:
     """Get project recommendations based on a goal or yarn description."""
-    stash = _load_stash(fixture)
-    output = _run_recommend(goal, stash)
+    stash_items, username = _load_stash(fixture)
+    output = _run_recommend(
+        goal, stash_items, ravelry_username=username, use_fixture=fixture
+    )
     click.echo(output)
 
 
@@ -86,7 +88,13 @@ def eval(example_id: str | None) -> None:
 
 
 @observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
-def _run_recommend(goal: str, stash: list[StashItem]) -> str:
+def _run_recommend(
+    goal: str,
+    stash: list[StashItem],
+    *,
+    ravelry_username: str,
+    use_fixture: bool,
+) -> str:
     """Run the recommendation graph and return formatted output as a string."""
     from skeinminder.graph.graph import build_graph
 
@@ -108,6 +116,9 @@ def _run_recommend(goal: str, stash: list[StashItem]) -> str:
             "formatted_output": None,
             "filter_confidence": "",
             "force_recommend": False,
+            "ravelry_username": ravelry_username,
+            "use_fixture": use_fixture,
+            "pattern_candidates": [],
         }
     )
     output: str = result.get("formatted_output") or "No recommendations generated."
@@ -115,7 +126,8 @@ def _run_recommend(goal: str, stash: list[StashItem]) -> str:
     return output
 
 
-def _load_stash(use_fixture: bool) -> list[StashItem]:
+def _load_stash(use_fixture: bool) -> tuple[list[StashItem], str]:
+    """Load stash items and return (items, ravelry_username)."""
     if use_fixture:
         import json
 
@@ -123,7 +135,7 @@ def _load_stash(use_fixture: bool) -> list[StashItem]:
 
         data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
         raw_list = RawStashListResponse.model_validate(data)
-        return normalize_stash(raw_list.stash)
+        return normalize_stash(raw_list.stash), "fixture_user"
 
     from skeinminder.config import ConfigError, get_ravelry_credentials
     from skeinminder.ravelry.client import RavelryClient
@@ -136,7 +148,7 @@ def _load_stash(use_fixture: bool) -> list[StashItem]:
     with RavelryClient(username=username, password=password) as client:
         user = client.get_current_user()
         raw_items = client.get_stash_list(user.username)
-    return normalize_stash(raw_items)
+    return normalize_stash(raw_items), user.username
 
 
 def _format_item(item: StashItem) -> str:

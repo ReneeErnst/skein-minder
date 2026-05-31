@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
+from typing import Any, Literal
 
 import click
 from langchain_anthropic import ChatAnthropic
@@ -17,6 +17,8 @@ from langfuse.model import ModelUsage
 from pydantic import BaseModel
 
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
+from skeinminder.ravelry.client import RavelryClient
+from skeinminder.ravelry.fixture_transport import FixtureTransport
 from skeinminder.ravelry.normalizer import (
     MatchScore,
     ProjectQuantity,
@@ -25,6 +27,7 @@ from skeinminder.ravelry.normalizer import (
     find_weight_in_text,
     weight_match,
 )
+from skeinminder.ravelry.patterns import PatternSummary, RawPattern, normalize_pattern
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
@@ -36,6 +39,45 @@ _SWEATER_GARMENTS: list[str] = [
     "vest",
     "coat",
 ]
+
+_TIER_ORDER: dict[str, int] = {"library": 0, "free": 1, "popular": 2}
+
+
+def _pattern_from_raw(raw: RawPattern, library_ids: set[int]) -> PatternSummary:
+    """Build a PatternSummary from a list-format RawPattern (no yardage or weight)."""
+    owned = raw.id in library_ids
+    tier: Literal["library", "free", "popular"] = (
+        "library" if owned else ("free" if raw.free else "popular")
+    )
+    return PatternSummary(
+        pattern_id=raw.id,
+        name=raw.name,
+        permalink=raw.permalink,
+        url=f"https://www.ravelry.com/patterns/library/{raw.permalink}",
+        free=raw.free,
+        library_owned=owned,
+        yardage_min=None,
+        yardage_max=None,
+        weight_name=None,
+        tier=tier,
+    )
+
+
+def _format_patterns_for_prompt(patterns: list[PatternSummary]) -> str:
+    """Format pattern candidates as a numbered list for the LLM prompt."""
+    lines: list[str] = []
+    for p in patterns:
+        if p.yardage_min is not None and p.yardage_max is not None:
+            yardage = f"{p.yardage_min}–{p.yardage_max} yds"
+        elif p.yardage_min is not None:
+            yardage = f"{p.yardage_min}+ yds"
+        elif p.yardage_max is not None:
+            yardage = f"up to {p.yardage_max} yds"
+        else:
+            yardage = "yardage unknown"
+        weight = p.weight_name or "weight unknown"
+        lines.append(f"[P{p.pattern_id}] {p.name} — {p.tier}, {yardage}, {weight}")
+    return "\n".join(lines)
 
 
 def _extract_yards(text: str) -> float | None:
@@ -210,6 +252,98 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     return {"filter_confidence": "high"}
 
 
+@observe(name="pattern_search")  # type: ignore[untyped-decorator]
+def pattern_search(state: GraphState) -> dict[str, Any]:
+    """Fetch and rank Ravelry pattern candidates for the filtered stash.
+
+    Runs four API calls (library ID collection, free search, popular search,
+    batch detail), each independently graceful. Writes pattern_candidates to
+    state sorted by tier (library → free → popular), capped at 10. If all
+    calls fail or filtered_stash is empty, writes an empty list — recommend
+    falls back to abstract archetypes.
+
+    Langfuse metadata: candidate_count, library_owned_count, detail_enriched.
+    """
+    filtered = state["filtered_stash"]
+
+    if not filtered:
+        langfuse_context.update_current_observation(
+            metadata={
+                "candidate_count": 0,
+                "library_owned_count": 0,
+                "detail_enriched": False,
+            }
+        )
+        return {"pattern_candidates": []}
+
+    best_item = max(filtered, key=lambda i: i.yards_total)
+    weight = best_item.weight_category.value
+    goal_query = _extract_garment_type((state.get("user_goal") or "").lower())
+    username = state["ravelry_username"]
+
+    if state["use_fixture"]:
+        client = RavelryClient(transport=FixtureTransport())
+    else:
+        from skeinminder.config import get_ravelry_credentials
+
+        creds_user, password = get_ravelry_credentials()
+        client = RavelryClient(username=creds_user, password=password)
+
+    try:
+        library_ids = client.get_library_pattern_ids(username)
+        free_patterns = client.search_patterns(
+            weight, query=goal_query, availability="free"
+        )
+        popular_patterns = client.search_patterns(
+            weight, query=goal_query, sort="projects"
+        )
+
+        # Combine, deduplicate, preserving first-seen order (free before popular)
+        seen: dict[int, RawPattern] = {}
+        for p in free_patterns + popular_patterns:
+            if p.id not in seen:
+                seen[p.id] = p
+        candidates = list(seen.values())
+
+        if not candidates:
+            langfuse_context.update_current_observation(
+                metadata={
+                    "candidate_count": 0,
+                    "library_owned_count": 0,
+                    "detail_enriched": False,
+                }
+            )
+            return {"pattern_candidates": []}
+
+        detail_map = client.get_pattern_details([p.id for p in candidates])
+        detail_enriched = bool(detail_map)
+
+        summaries: list[PatternSummary] = []
+        library_owned_count = 0
+        for raw in candidates:
+            if raw.id in detail_map:
+                summary = normalize_pattern(detail_map[raw.id], library_ids)
+            else:
+                summary = _pattern_from_raw(raw, library_ids)
+            if summary.library_owned:
+                library_owned_count += 1
+            summaries.append(summary)
+
+        summaries.sort(key=lambda s: _TIER_ORDER[s.tier])
+        result_candidates = summaries[:10]
+
+        langfuse_context.update_current_observation(
+            metadata={
+                "candidate_count": len(result_candidates),
+                "library_owned_count": library_owned_count,
+                "detail_enriched": detail_enriched,
+            }
+        )
+        return {"pattern_candidates": result_candidates}
+    finally:
+        client.close()
+
+
 @observe(name="low_confidence_output")  # type: ignore[untyped-decorator]
 def low_confidence_output(state: GraphState) -> dict[str, Any]:
     """Summarise what the filter found and ask the user whether to proceed anyway.
@@ -284,6 +418,13 @@ _SYSTEM_PROMPT = (
     "Return as many recommendations as are genuinely feasible, up to 3."
 )
 
+_PATTERN_RULE = (
+    "5. When patterns are provided, pair each recommendation with the "
+    "highest-priority pattern (library > free > popular) whose yardage range "
+    "the available yarn can meet. If no pattern fits the yarn, omit the pattern "
+    "fields rather than forcing a mismatch."
+)
+
 
 def _format_stash_for_prompt(items: list[StashItem]) -> str:
     """Format filtered stash items as a numbered list for the LLM prompt."""
@@ -315,21 +456,40 @@ def recommend(state: GraphState) -> dict[str, Any]:
     client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
 
     stash_summary = _format_stash_for_prompt(state["filtered_stash"])
+    pattern_candidates = state.get("pattern_candidates") or []
 
-    if state["mode"] == "project_first":
-        human_text = f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+    if pattern_candidates:
+        system_text = _SYSTEM_PROMPT + "\n" + _PATTERN_RULE
+        pattern_list = _format_patterns_for_prompt(pattern_candidates)
+        if state["mode"] == "project_first":
+            human_text = (
+                f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+                f"\n\nAvailable patterns:\n{pattern_list}"
+            )
+        else:
+            human_text = (
+                f"Yarn in stash:\n{stash_summary}\n\n"
+                "What projects would work well with this yarn?"
+                f"\n\nAvailable patterns:\n{pattern_list}"
+            )
     else:
-        human_text = (
-            f"Yarn in stash:\n{stash_summary}\n\n"
-            "What projects would work well with this yarn?"
-        )
+        system_text = _SYSTEM_PROMPT
+        if state["mode"] == "project_first":
+            human_text = (
+                f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+            )
+        else:
+            human_text = (
+                f"Yarn in stash:\n{stash_summary}\n\n"
+                "What projects would work well with this yarn?"
+            )
 
     messages = [
         SystemMessage(
             content=[
                 {
                     "type": "text",
-                    "text": _SYSTEM_PROMPT,
+                    "text": system_text,
                     "cache_control": {"type": "ephemeral"},
                 }
             ]
@@ -393,5 +553,7 @@ def format_output(state: GraphState) -> dict[str, Any]:
                     yarn_names.append(f"{item.brand} {item.yarn_name}")
             if yarn_names:
                 lines.append(f"   Yarn: {', '.join(yarn_names)}")
+        if rec.pattern_name and rec.pattern_url:
+            lines.append(f"   Pattern: {rec.pattern_name} — {rec.pattern_url}")
 
     return {"formatted_output": "\n".join(lines)}

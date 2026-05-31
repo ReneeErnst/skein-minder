@@ -7,6 +7,7 @@ from typing import Literal, TypedDict
 from pydantic import BaseModel
 
 from skeinminder.ravelry.normalizer import StashItem, WeightCategory
+from skeinminder.ravelry.patterns import PatternSummary
 
 
 class StashFilter(BaseModel):
@@ -26,6 +27,9 @@ class Recommendation(BaseModel):
     rationale: str
     risks: list[str]
     yarn_candidate_ids: list[int]
+    pattern_id: int | None = None
+    pattern_name: str | None = None
+    pattern_url: str | None = None
 
 
 class GraphState(TypedDict):
@@ -42,3 +46,6 @@ class GraphState(TypedDict):
     formatted_output: str | None
     filter_confidence: Literal["high", "low", ""]
     force_recommend: bool
+    ravelry_username: str
+    use_fixture: bool
+    pattern_candidates: list[PatternSummary]

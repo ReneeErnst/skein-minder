@@ -71,41 +71,48 @@ LANGFUSE_HOST=          # defaults to http://localhost:3000
 
 Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
 
-## What's built (Phases 1–6 partial)
+## What's built (Phases 1–6b)
 
 ```
 src/skeinminder/
   ravelry/
     client.py           # RavelryClient — Basic Auth, pagination, retry
-                        #   Phase 6: + get_library_pattern_ids, search_patterns, get_pattern_details
+                        #   Phase 6a: + get_library_pattern_ids, search_patterns, get_pattern_details
     models.py           # Raw Pydantic models (prefix Raw*) — thin wrappers around API JSON
     normalizer.py       # normalize_stash() → StashItem; weight/fiber scoring utilities
-    patterns.py         # Phase 6: RawPattern, RawPatternFull, RawLibrarySearchResponse,
+    patterns.py         # Phase 6a: RawPattern, RawPatternFull, RawLibrarySearchResponse,
                         #   PatternSummary, normalize_pattern()
     sanitizer.py        # redacts PII before fixture files are committed
     recorder.py         # one-shot script to capture live API responses as fixture JSON
     exceptions.py       # RavelryAPIError, RavelryAuthError, RavelryRateLimitError, NormalizationError
-    fixture_transport.py  # Phase 6: FixtureTransport moved here from tests/conftest.py;
+    fixture_transport.py  # Phase 6a: FixtureTransport moved here from tests/conftest.py;
                           #   routes pattern API URLs to fixture files
   graph/
     state.py       # GraphState (TypedDict), StashFilter, Recommendation
+                   #   Phase 6b: Recommendation gains pattern_id/name/url (nullable);
+                   #   GraphState gains ravelry_username, use_fixture, pattern_candidates
     graph.py       # build_graph() — compiles the LangGraph StateGraph
-    nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output — all @observe-decorated
+                   #   Phase 6b: pattern_search wired in on both routing paths
+    nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality,
+                   #   low_confidence_output, pattern_search, recommend, format_output
+                   #   Phase 6b: + pattern_search node; recommend + format_output updated
   scripts/
     setup_langfuse_dataset.py  # idempotent bootstrap: registers Anthropic model pricing in Langfuse, then creates skeinminder-eval-v1 dataset and upserts golden examples
   config.py        # get_ravelry_credentials() from .env
-  cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`; _run_recommend() carries root @observe trace
+  cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`
+                   #   Phase 6b: _load_stash returns (stash, username); _run_recommend takes ravelry_username + use_fixture
   eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()
+                   #   Phase 6b: EvalExpected gains pattern_ids_from_candidates; run_example uses fixture transport
   observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
   conftest.py      # fixture_client and fixture_transport fixtures (FixtureTransport now lives in src/)
   test_eval.py     # unit tests (CI) + @pytest.mark.eval integration tests (real LLM)
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
   fixtures/eval/   # three golden examples (project-first, stash-first, low-confidence); example-schema.json documents the shape
-  fixtures/pattern_search_free.json      # Phase 6: free-pattern search fixture
-  fixtures/pattern_search_popular.json   # Phase 6: popular-pattern search fixture
-  fixtures/pattern_detail.json           # Phase 6: batch pattern detail fixture
-  fixtures/library_search_patterns.json  # Phase 6: user library search fixture
+  fixtures/pattern_search_free.json      # Phase 6a: free-pattern search fixture
+  fixtures/pattern_search_popular.json   # Phase 6a: popular-pattern search fixture
+  fixtures/pattern_detail.json           # Phase 6a: batch pattern detail fixture
+  fixtures/library_search_patterns.json  # Phase 6a: user library search fixture
 docker-compose.yml # Langfuse v2 self-hosted + Postgres; pre-seeded org/project/API keys
 ```
 
@@ -116,20 +123,21 @@ The LangGraph pipeline:
 ```
 supervisor → [project_first_filter | stash_first_filter]
            → assess_filter_quality
-           → high: recommend → format_output
-             low:  low_confidence_output → (force_recommend?) recommend | END
+           → high: pattern_search → recommend → format_output
+             low:  low_confidence_output → (force_recommend?) pattern_search → recommend | END
 ```
 
 - **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs.
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords; both sort descending by yards.
-- **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `recommend` or `low_confidence_output` accordingly.
+- **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `pattern_search` or `low_confidence_output` accordingly.
 - **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
-- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt and returns up to 3 `Recommendation` objects via structured output. Also attaches a `langfuse.callback.CallbackHandler` (lazy import — requires `langchain`) for token tracking.
-- **format_output**: renders recommendations as a plain-text CLI report, resolving stash IDs back to yarn names.
+- **pattern_search**: deterministic node that runs four Ravelry API calls (library IDs, free search, popular search, batch detail), each independently graceful. Writes `pattern_candidates` sorted library→free→popular, capped at 10. Uses `FixtureTransport` when `use_fixture=True`; falls back to live credentials otherwise. Full failure writes `[]`, which causes `recommend` to produce abstract archetypes.
+- **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt; conditionally includes a formatted pattern list and pairing rule when `pattern_candidates` is non-empty. Returns up to 3 `Recommendation` objects via structured output.
+- **format_output**: renders recommendations as a plain-text CLI report, resolving stash IDs back to yarn names. Renders a `Pattern: <name> — <url>` line when pattern fields are set.
 
 Every node is decorated with `@observe(name=...)` from `langfuse.decorators`. The decorator is a no-op when `LANGFUSE_PUBLIC_KEY` is absent, so all tests pass without credentials. The CLI's `_run_recommend()` function carries the root `@observe(name="skeinminder-recommend")` trace.
 
-In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the node function itself, not the LLM client — so the full graph routing logic is exercised without live API calls.
+In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the node function itself, not the LLM client — so the full graph routing logic is exercised without live API calls. `pattern_search` runs as a real node via `FixtureTransport` in all integration tests.
 
 ## Testing conventions
 

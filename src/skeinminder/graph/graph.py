@@ -22,6 +22,7 @@ def build_graph() -> CompiledStateGraph[GraphState]:
     workflow.add_node("stash_first_filter", nodes.stash_first_filter)
     workflow.add_node("assess_filter_quality", nodes.assess_filter_quality)
     workflow.add_node("low_confidence_output", nodes.low_confidence_output)
+    workflow.add_node("pattern_search", nodes.pattern_search)
     workflow.add_node("recommend", nodes.recommend)
     workflow.add_node("format_output", nodes.format_output)
 
@@ -39,13 +40,14 @@ def build_graph() -> CompiledStateGraph[GraphState]:
     workflow.add_conditional_edges(
         "assess_filter_quality",
         lambda state: state["filter_confidence"],
-        {"high": "recommend", "low": "low_confidence_output"},
+        {"high": "pattern_search", "low": "low_confidence_output"},
     )
     workflow.add_conditional_edges(
         "low_confidence_output",
-        lambda state: "recommend" if state["force_recommend"] else END,
-        {"recommend": "recommend", END: END},
+        lambda state: "pattern_search" if state["force_recommend"] else END,
+        {"pattern_search": "pattern_search", END: END},
     )
+    workflow.add_edge("pattern_search", "recommend")
     workflow.add_edge("recommend", "format_output")
     workflow.add_edge("format_output", END)
 

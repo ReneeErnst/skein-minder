@@ -39,3 +39,40 @@ def test_graph_state_is_typed_dict() -> None:
     assert "filtered_stash" in hints
     assert "recommendations" in hints
     assert "formatted_output" in hints
+
+
+def test_recommendation_pattern_fields_default_to_none() -> None:
+    rec = Recommendation(
+        title="Simple Hat",
+        rationale="Works well.",
+        risks=["Check gauge"],
+        yarn_candidate_ids=[1],
+    )
+    assert rec.pattern_id is None
+    assert rec.pattern_name is None
+    assert rec.pattern_url is None
+
+
+def test_recommendation_accepts_pattern_fields() -> None:
+    rec = Recommendation(
+        title="Simple Hat",
+        rationale="Works well.",
+        risks=["Check gauge"],
+        yarn_candidate_ids=[1],
+        pattern_id=1234,
+        pattern_name="Simple Textured Hat",
+        pattern_url="https://www.ravelry.com/patterns/library/simple-textured-hat",
+    )
+    assert rec.pattern_id == 1234
+    assert rec.pattern_name == "Simple Textured Hat"
+    assert (
+        rec.pattern_url
+        == "https://www.ravelry.com/patterns/library/simple-textured-hat"
+    )
+
+
+def test_graph_state_has_pattern_integration_keys() -> None:
+    hints = get_type_hints(GraphState)
+    assert "ravelry_username" in hints
+    assert "use_fixture" in hints
+    assert "pattern_candidates" in hints

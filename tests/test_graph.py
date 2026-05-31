@@ -10,6 +10,7 @@ from skeinminder.graph.nodes import (
     assess_filter_quality,
     format_output,
     low_confidence_output,
+    pattern_search,
     recommend,
 )
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
@@ -17,6 +18,12 @@ from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
     StashItem,
     WeightCategory,
+)
+from skeinminder.ravelry.patterns import (
+    PatternSummary,
+    RawPattern,
+    RawPatternFull,
+    RawPatternYarnWeight,
 )
 
 
@@ -51,6 +58,9 @@ def _make_state(**overrides: Any) -> GraphState:
         "formatted_output": None,
         "filter_confidence": "",
         "force_recommend": False,
+        "ravelry_username": "fixture_user",
+        "use_fixture": True,
+        "pattern_candidates": [],
     }
     state.update(overrides)
     return cast(GraphState, state)
@@ -66,6 +76,191 @@ def _canned_recommendations(stash_id: int = 1) -> list[Recommendation]:
         )
         for i in range(1, 4)
     ]
+
+
+def _make_raw_pattern(pid: int, name: str, free: bool) -> RawPattern:
+    return RawPattern(
+        id=pid,
+        name=name,
+        permalink=name.lower().replace(" ", "-"),
+        free=free,
+    )
+
+
+def _make_pattern_summary(
+    pid: int,
+    tier: str,
+    yardage_min: int | None = 800,
+) -> PatternSummary:
+    return PatternSummary(
+        pattern_id=pid,
+        name=f"Pattern {pid}",
+        permalink=f"pattern-{pid}",
+        url=f"https://www.ravelry.com/patterns/library/pattern-{pid}",
+        free=(tier == "free"),
+        library_owned=(tier == "library"),
+        yardage_min=yardage_min,
+        yardage_max=yardage_min + 200 if yardage_min else None,
+        weight_name="Worsted",
+        tier=tier,  # type: ignore[arg-type]
+    )
+
+
+def _make_client_mock(
+    *,
+    library_ids: set[int],
+    free_patterns: list[RawPattern],
+    popular_patterns: list[RawPattern],
+    detail_map: dict[int, Any],
+) -> MagicMock:
+    mock = MagicMock()
+    mock.get_library_pattern_ids.return_value = library_ids
+    mock.search_patterns.side_effect = [free_patterns, popular_patterns]
+    mock.get_pattern_details.return_value = detail_map
+    return mock
+
+
+# --- pattern_search node ---
+
+
+def test_pattern_search_happy_path_fixture_transport() -> None:
+    """All 4 API calls succeed via FixtureTransport; assert tier ordering and cap."""
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+        user_goal="I want a cardigan",
+        use_fixture=True,
+        ravelry_username="fixture_user",
+    )
+    result = pattern_search(state)
+    candidates: list[PatternSummary] = result["pattern_candidates"]
+
+    # Fixture: library={1001,1002}, free={1001-1004}, popular={2001-2004,1002}
+    # Combined unique: 1001, 1002, 1003, 1004, 2001, 2002, 2003, 2004 — 8 total
+    assert len(candidates) <= 10
+    assert len(candidates) > 0
+    tiers = [c.tier for c in candidates]
+    library_indices = [i for i, t in enumerate(tiers) if t == "library"]
+    free_indices = [i for i, t in enumerate(tiers) if t == "free"]
+    popular_indices = [i for i, t in enumerate(tiers) if t == "popular"]
+    # Library candidates come first, then free, then popular
+    if library_indices and free_indices:
+        assert max(library_indices) < min(free_indices)
+    if free_indices and popular_indices:
+        assert max(free_indices) < min(popular_indices)
+    # Library candidates correspond to IDs in {1001, 1002}
+    for c in candidates:
+        if c.tier == "library":
+            assert c.pattern_id in {1001, 1002}
+
+
+PATTERN_SEARCH_FAILURE_SCENARIOS = [
+    pytest.param(
+        {
+            "description": "library_failure_only",
+            "library_ids": set(),  # graceful degradation: empty set
+            "free_patterns": [
+                _make_raw_pattern(101, "Free Hat", True),
+                _make_raw_pattern(102, "Free Scarf", True),
+            ],
+            "popular_patterns": [
+                _make_raw_pattern(201, "Popular Cardigan", False),
+            ],
+            "detail_map": {
+                101: RawPatternFull(
+                    id=101,
+                    name="Free Hat",
+                    permalink="free-hat",
+                    free=True,
+                    yardage=200,
+                    yardage_max=300,
+                    yarn_weight=RawPatternYarnWeight(id=1, name="Worsted"),
+                ),
+                102: RawPatternFull(
+                    id=102,
+                    name="Free Scarf",
+                    permalink="free-scarf",
+                    free=True,
+                    yardage=150,
+                    yardage_max=200,
+                    yarn_weight=RawPatternYarnWeight(id=1, name="Worsted"),
+                ),
+                201: RawPatternFull(
+                    id=201,
+                    name="Popular Cardigan",
+                    permalink="popular-cardigan",
+                    free=False,
+                    yardage=900,
+                    yardage_max=1100,
+                    yarn_weight=RawPatternYarnWeight(id=1, name="Worsted"),
+                ),
+            },
+            "assert_fn": lambda candidates: (
+                len(candidates) == 3 and all(c.tier != "library" for c in candidates)
+            ),
+        },
+        id="library_failure_only",
+    ),
+    pytest.param(
+        {
+            "description": "both_searches_fail",
+            "library_ids": {999},
+            "free_patterns": [],
+            "popular_patterns": [],
+            "detail_map": {},
+            "assert_fn": lambda candidates: candidates == [],
+        },
+        id="both_searches_fail",
+    ),
+    pytest.param(
+        {
+            "description": "batch_detail_failure",
+            "library_ids": set(),
+            "free_patterns": [
+                _make_raw_pattern(101, "Free Hat", True),
+            ],
+            "popular_patterns": [
+                _make_raw_pattern(201, "Popular Sweater", False),
+            ],
+            "detail_map": {},  # empty = batch detail failed
+            "assert_fn": lambda candidates: (
+                len(candidates) == 2 and all(c.yardage_min is None for c in candidates)
+            ),
+        },
+        id="batch_detail_failure",
+    ),
+]
+
+
+@pytest.mark.parametrize("scenario", PATTERN_SEARCH_FAILURE_SCENARIOS)
+def test_pattern_search_failure_scenarios(scenario: dict[str, Any]) -> None:
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+        use_fixture=True,
+        ravelry_username="fixture_user",
+    )
+    mock_client = _make_client_mock(
+        library_ids=scenario["library_ids"],
+        free_patterns=scenario["free_patterns"],
+        popular_patterns=scenario["popular_patterns"],
+        detail_map=scenario["detail_map"],
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        result = pattern_search(state)
+
+    candidates = result["pattern_candidates"]
+    assert scenario["assert_fn"](candidates), (
+        f"Scenario '{scenario['description']}' failed: candidates={candidates}"
+    )
+
+
+def test_pattern_search_empty_filtered_stash() -> None:
+    state = _make_state(
+        filtered_stash=[],
+        use_fixture=True,
+        ravelry_username="fixture_user",
+    )
+    result = pattern_search(state)
+    assert result["pattern_candidates"] == []
 
 
 # --- recommend ---
@@ -109,6 +304,107 @@ def test_recommend_extracts_parsed_from_include_raw_response() -> None:
     assert result["recommendations"] == canned
 
 
+def test_recommend_includes_pattern_list_when_candidates_present() -> None:
+    """When pattern_candidates is non-empty, the prompt must include pattern data."""
+    canned = [
+        Recommendation(
+            title="Cozy Hat",
+            rationale="Good match.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+            pattern_id=101,
+            pattern_name="Free Hat",
+            pattern_url="https://www.ravelry.com/patterns/library/free-hat",
+        )
+    ]
+    mock_raw = MagicMock()
+    mock_raw.usage_metadata = {
+        "input_tokens": 50,
+        "output_tokens": 20,
+        "total_tokens": 70,
+    }
+    mock_parsed = MagicMock()
+    mock_parsed.recommendations = canned
+
+    mock_structured = MagicMock()
+    mock_structured.invoke.return_value = {
+        "raw": mock_raw,
+        "parsed": mock_parsed,
+        "parsing_error": None,
+    }
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+
+    candidates = [_make_pattern_summary(101, "free")]
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1)],
+        mode="project_first",
+        user_goal="I want a hat",
+        pattern_candidates=candidates,
+    )
+
+    captured_messages: list[Any] = []
+
+    def capture_invoke(msgs: list[Any]) -> dict[str, Any]:
+        captured_messages.extend(msgs)
+        return {"raw": mock_raw, "parsed": mock_parsed, "parsing_error": None}
+
+    mock_structured.invoke.side_effect = capture_invoke
+
+    with patch("skeinminder.graph.nodes.ChatAnthropic", return_value=mock_llm):
+        result = recommend(state)
+
+    assert result["recommendations"] == canned
+    human_content = captured_messages[-1].content
+    assert "Available patterns:" in human_content
+    assert "[P101]" in human_content
+
+
+def test_recommend_omits_pattern_list_when_no_candidates() -> None:
+    """When pattern_candidates is empty, the prompt must not include pattern data."""
+    canned = [
+        Recommendation(
+            title="Cozy Hat",
+            rationale="Good match.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+        )
+    ]
+    mock_raw = MagicMock()
+    mock_raw.usage_metadata = {
+        "input_tokens": 50,
+        "output_tokens": 20,
+        "total_tokens": 70,
+    }
+    mock_parsed = MagicMock()
+    mock_parsed.recommendations = canned
+
+    mock_structured = MagicMock()
+    captured_messages: list[Any] = []
+
+    def capture_invoke(msgs: list[Any]) -> dict[str, Any]:
+        captured_messages.extend(msgs)
+        return {"raw": mock_raw, "parsed": mock_parsed, "parsing_error": None}
+
+    mock_structured.invoke.side_effect = capture_invoke
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1)],
+        mode="project_first",
+        user_goal="I want a hat",
+        pattern_candidates=[],
+    )
+
+    with patch("skeinminder.graph.nodes.ChatAnthropic", return_value=mock_llm):
+        result = recommend(state)
+
+    assert result["recommendations"] == canned
+    human_content = captured_messages[-1].content
+    assert "Available patterns:" not in human_content
+
+
 # --- format_output ---
 
 
@@ -131,6 +427,43 @@ def test_format_output_handles_empty_recommendations() -> None:
         _make_state(user_input="", user_goal=None, recommendations=[])
     )
     assert isinstance(result["formatted_output"], str)
+
+
+def test_format_output_renders_pattern_line_when_fields_present() -> None:
+    item = _make_item(stash_id=1)
+    recs = [
+        Recommendation(
+            title="Simple Textured Cardigan",
+            rationale="Excellent match for worsted wool.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+            pattern_id=12345,
+            pattern_name="Simple Textured Cardigan",
+            pattern_url="https://www.ravelry.com/patterns/library/simple-textured-cardigan",
+        )
+    ]
+    result = format_output(_make_state(filtered_stash=[item], recommendations=recs))
+    output = result["formatted_output"]
+    assert isinstance(output, str)
+    assert "Simple Textured Cardigan" in output
+    assert "ravelry.com/patterns/library/simple-textured-cardigan" in output
+    assert "Pattern:" in output
+
+
+def test_format_output_omits_pattern_line_when_fields_absent() -> None:
+    item = _make_item(stash_id=1)
+    recs = [
+        Recommendation(
+            title="Abstract Cardigan",
+            rationale="Good match.",
+            risks=["Check gauge"],
+            yarn_candidate_ids=[1],
+        )
+    ]
+    result = format_output(_make_state(filtered_stash=[item], recommendations=recs))
+    output = result["formatted_output"]
+    assert "Pattern:" not in output
+    assert "Abstract Cardigan" in output
 
 
 # --- full graph integration (recommend mocked) ---

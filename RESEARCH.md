@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-30_
+_Last updated: 2026-05-31_
 
 ## Working project name
 
@@ -586,23 +586,29 @@ Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`
 - `GET /people/{username}/library/search.json` — search user's owned patterns.
 - `GET /patterns.json?ids=ID1+ID2+...` — batch pattern detail including `yardage`, `yardage_max`, `yarn_weight`.
 
-**Completed:**
+**Phase 6a — Pattern data layer ✅ COMPLETE (merged to main)**
+
 - `patterns.py` — `RawPattern` (search list shape), `RawPatternFull` (batch detail shape), `RawLibraryVolume`, `RawLibrarySearchResponse`, `PatternSummary` (normalized domain model), `normalize_pattern()`. Tier assignment: library > free > popular.
 - `FixtureTransport` moved from `tests/conftest.py` to `src/skeinminder/ravelry/fixture_transport.py` and extended with routes for all four pattern API endpoints.
 - Pattern fixture files committed: `pattern_search_free.json`, `pattern_search_popular.json`, `pattern_detail.json`, `library_search_patterns.json`.
 - `RavelryClient.get_library_pattern_ids(username)` — paginates library search; returns empty set on any failure (graceful degradation).
 - `RavelryClient.search_patterns(weight, query, availability, sort, page_size)` — always passes `craft=knitting`; returns empty list on failure.
 - `RavelryClient.get_pattern_details(pattern_ids)` — batch call to `/patterns.json`; returns partial map on parse failures.
-- 161 tests passing (CI clean). Branch: `phase6`.
 
-**Remaining (graph integration only — all API client and fixture work is done):**
-- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
-- Add `pattern_search` node to the graph: takes filtered stash candidates, calls `search_patterns` + `get_pattern_details`, returns ranked `PatternSummary` list.
-- Update `recommend` node: prompt pairs yarn candidates with specific pattern candidates (not abstract archetypes).
-- Update `format_output`: show pattern title and URL alongside yarn and rationale.
-- Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
+**Phase 6b — Pattern graph integration 🔄 IN PR (#10, branch: phase6b)**
 
-### Phase 6b — Observability investigation ✅ COMPLETE (2026-05-31)
+- `Recommendation` model gains nullable `pattern_id`, `pattern_name`, `pattern_url`.
+- `GraphState` gains `ravelry_username`, `use_fixture`, `pattern_candidates`.
+- New `pattern_search` node (deterministic, `@observe`-decorated): runs four Ravelry API calls (library IDs, free search, popular search, batch detail), each independently graceful. Writes `pattern_candidates` sorted library→free→popular, capped at 10. Falls back to `[]` on full failure.
+- `recommend` node: conditionally includes formatted pattern list and pairing rule in the LLM prompt.
+- `format_output`: renders `Pattern: <name> — <url>` line when pattern fields are set.
+- CLI wires `ravelry_username` and `use_fixture` through `_load_stash` into graph state.
+- Eval adds `pattern_ids_from_candidates` assertion; `run_example` uses fixture transport.
+- 176 tests passing. Graph routing: `assess_filter_quality` high → `pattern_search` → `recommend`; `low_confidence_output` confirm → `pattern_search` → `recommend`.
+
+Future hook (not yet in scope): when `low_confidence_output` fires, offer to search for yarn to purchase that would satisfy the goal.
+
+### Phase 5b — Observability improvements ✅ COMPLETE (merged in PR #9)
 
 Focused pass on tracing quality before Phase 6 adds more nodes.
 
@@ -617,6 +623,45 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 4. **Model pricing not configured in self-hosted Langfuse.** Langfuse self-hosted has no pre-populated model pricing table; cost shows as `None` until models are registered. **Decision: add model registration to `setup_langfuse_dataset.py`.** This is the right pattern for both local dev and self-hosted production — run the script once after each fresh deployment. `langfuse Cloud` would handle this automatically, but we're targeting self-hosted. Haiku 4.5, Sonnet 4.6, and Opus 4.7 pricing is registered by the script. Update prices there when Anthropic changes rates.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
+
+### Post-Phase-6 improvement backlog
+
+_Identified during design review on 2026-05-31. These are not blocking Phase 6 graph integration, but should be addressed before Phase 7 adds more complexity._
+
+**1. Parallel pattern search and stash filtering (LangGraph fan-out)**
+
+The highest-leverage parallelism opportunity in the graph. Pattern search and stash filtering are independent operations — pattern search needs the goal/weight from `supervisor`, stash filtering needs the stash — and can run in parallel via LangGraph's fan-out support. After `supervisor` resolves, two branches can execute concurrently:
+
+- `project_first_filter` or `stash_first_filter` (~10ms)
+- `pattern_search` node (~500ms–1s: Ravelry pattern search + detail fetch)
+
+Both results join before `assess_filter_quality`. This eliminates pattern lookup latency from the user's perspective without affecting the LLM call. Without parallelism, pattern search would add ~500ms–1s of sequential wait time before the already-dominant LLM call.
+
+**2. Stream the `recommend` LLM response**
+
+The `recommend` node blocks for 2–5 seconds before the user sees anything. The Anthropic API supports streaming; adding it gives visible progress immediately and is the fastest UX improvement available without structural changes to the graph.
+
+**3. Async Ravelry pagination**
+
+`get_stash_list()` and `get_library_pattern_ids()` paginate sequentially. For a 1,300-item stash (13 pages), switching from `httpx.Client` to `httpx.AsyncClient` with `asyncio.gather()` could reduce stash load time by 70–80% on live runs. Requires converting `RavelryClient` to async or adding an async variant. The pattern search path (`search_patterns` + `get_library_pattern_ids`) would benefit from the same treatment, since those two calls are also independent and currently would run serially.
+
+**4. Richer filter quality signals**
+
+`assess_filter_quality` checks only two conditions: empty filtered stash, or sweater goal with <500 yards. Additional signals worth adding:
+
+- All candidates are the same fiber (a mono-fiber result is suspicious for a 1,300-item stash)
+- No candidates match the fiber suitability score for the goal garment type (all MISMATCH)
+- Pattern candidates found but no stash yarn within one weight step of any pattern's required weight
+
+**5. `click.confirm` → LangGraph `interrupt()`**
+
+`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 7 anyway; doing it here cleans up the code before more complexity lands.
+
+**6. Supervisor robustness**
+
+The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 7 if not blocking demo.
+
+---
 
 ### Phase 7 — Human approval checkpoints
 
