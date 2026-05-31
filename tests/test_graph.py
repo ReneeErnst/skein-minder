@@ -429,6 +429,43 @@ def test_format_output_handles_empty_recommendations() -> None:
     assert isinstance(result["formatted_output"], str)
 
 
+def test_format_output_renders_pattern_line_when_fields_present() -> None:
+    item = _make_item(stash_id=1)
+    recs = [
+        Recommendation(
+            title="Simple Textured Cardigan",
+            rationale="Excellent match for worsted wool.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+            pattern_id=12345,
+            pattern_name="Simple Textured Cardigan",
+            pattern_url="https://www.ravelry.com/patterns/library/simple-textured-cardigan",
+        )
+    ]
+    result = format_output(_make_state(filtered_stash=[item], recommendations=recs))
+    output = result["formatted_output"]
+    assert isinstance(output, str)
+    assert "Simple Textured Cardigan" in output
+    assert "ravelry.com/patterns/library/simple-textured-cardigan" in output
+    assert "Pattern:" in output
+
+
+def test_format_output_omits_pattern_line_when_fields_absent() -> None:
+    item = _make_item(stash_id=1)
+    recs = [
+        Recommendation(
+            title="Abstract Cardigan",
+            rationale="Good match.",
+            risks=["Check gauge"],
+            yarn_candidate_ids=[1],
+        )
+    ]
+    result = format_output(_make_state(filtered_stash=[item], recommendations=recs))
+    output = result["formatted_output"]
+    assert "Pattern:" not in output
+    assert "Abstract Cardigan" in output
+
+
 # --- full graph integration (recommend mocked) ---
 
 

@@ -553,5 +553,7 @@ def format_output(state: GraphState) -> dict[str, Any]:
                     yarn_names.append(f"{item.brand} {item.yarn_name}")
             if yarn_names:
                 lines.append(f"   Yarn: {', '.join(yarn_names)}")
+        if rec.pattern_name and rec.pattern_url:
+            lines.append(f"   Pattern: {rec.pattern_name} — {rec.pattern_url}")
 
     return {"formatted_output": "\n".join(lines)}
