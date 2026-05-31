@@ -20,7 +20,11 @@ from skeinminder.ravelry.models import (
     RawStashListResponse,
     RawUser,
 )
-from skeinminder.ravelry.patterns import RawLibrarySearchResponse, RawPattern
+from skeinminder.ravelry.patterns import (
+    RawLibrarySearchResponse,
+    RawPattern,
+    RawPatternFull,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +195,37 @@ class RavelryClient:
         if not isinstance(raw_list, list):
             return []
         return [RawPattern.model_validate(p) for p in raw_list]
+
+    def get_pattern_details(self, pattern_ids: list[int]) -> dict[int, RawPatternFull]:
+        """Fetch full pattern details for a list of IDs in a single batch call.
+
+        Calls /patterns.json?ids=ID1+ID2+... Returns a map of pattern_id to
+        RawPatternFull. IDs absent from the response are simply missing from the
+        map — callers handle partial results. Returns an empty dict on complete failure.
+        """
+        if not pattern_ids:
+            return {}
+
+        ids_param = " ".join(str(i) for i in pattern_ids)
+        try:
+            data = self._get("/patterns.json", params={"ids": ids_param})
+        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+            logger.warning("Pattern detail fetch failed; returning empty dict.")
+            return {}
+
+        raw_map = data.get("patterns", {})
+        if not isinstance(raw_map, dict):
+            return {}
+        requested = set(pattern_ids)
+        result: dict[int, RawPatternFull] = {}
+        for key, value in raw_map.items():
+            try:
+                pattern = RawPatternFull.model_validate(value)
+                if pattern.id in requested:
+                    result[pattern.id] = pattern
+            except Exception:
+                logger.debug("Could not parse pattern %s; skipping.", key)
+        return result
 
     def close(self) -> None:
         self._client.close()

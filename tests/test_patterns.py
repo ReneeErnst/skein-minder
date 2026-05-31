@@ -114,3 +114,31 @@ def test_search_patterns_api_failure(fixture_client: RavelryClient) -> None:
     with patch.object(fixture_client, "_get", side_effect=err):
         result = fixture_client.search_patterns(weight="worsted")
     assert result == []
+
+
+def test_get_pattern_details_happy_path(fixture_client: RavelryClient) -> None:
+    result = fixture_client.get_pattern_details([1001, 1002, 2001])
+    assert set(result.keys()) == {1001, 1002, 2001}
+    assert result[1001].name == "Simple Stockinette Hat"
+    assert result[1001].yardage == 100
+    assert result[1001].yarn_weight is not None
+    assert result[1001].yarn_weight.name == "DK"
+
+
+def test_get_pattern_details_partial_response(fixture_client: RavelryClient) -> None:
+    # 9999 is not in the fixture; should be absent from result, not raise
+    result = fixture_client.get_pattern_details([1001, 9999])
+    assert 1001 in result
+    assert 9999 not in result
+
+
+def test_get_pattern_details_empty_input(fixture_client: RavelryClient) -> None:
+    result = fixture_client.get_pattern_details([])
+    assert result == {}
+
+
+def test_get_pattern_details_api_failure(fixture_client: RavelryClient) -> None:
+    err = RavelryAPIError(500, "/test")
+    with patch.object(fixture_client, "_get", side_effect=err):
+        result = fixture_client.get_pattern_details([1001, 1002])
+    assert result == {}
