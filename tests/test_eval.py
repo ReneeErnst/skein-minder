@@ -325,3 +325,28 @@ def test_upsert_dataset_items_calls_create_for_each_example() -> None:
     ]
     assert "ex-1" in str(call_ids)
     assert "ex-2" in str(call_ids)
+
+
+def test_register_models_creates_all_when_none_exist() -> None:
+    from skeinminder.scripts.setup_langfuse_dataset import _MODELS, register_models
+
+    mock_client = MagicMock()
+    mock_client.client.models.list.return_value.data = []
+
+    register_models(mock_client)
+
+    assert mock_client.client.models.create.call_count == len(_MODELS)
+
+
+def test_register_models_skips_already_registered() -> None:
+    from skeinminder.scripts.setup_langfuse_dataset import _MODELS, register_models
+
+    existing = MagicMock()
+    existing.match_pattern = _MODELS[0]["match_pattern"]
+
+    mock_client = MagicMock()
+    mock_client.client.models.list.return_value.data = [existing]
+
+    register_models(mock_client)
+
+    assert mock_client.client.models.create.call_count == len(_MODELS) - 1

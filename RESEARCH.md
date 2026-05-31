@@ -595,12 +595,28 @@ Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`
 - `RavelryClient.get_pattern_details(pattern_ids)` — batch call to `/patterns.json`; returns partial map on parse failures.
 - 161 tests passing (CI clean). Branch: `phase6`.
 
-**Remaining:**
+**Remaining (graph integration only — all API client and fixture work is done):**
+- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
 - Add `pattern_search` node to the graph: takes filtered stash candidates, calls `search_patterns` + `get_pattern_details`, returns ranked `PatternSummary` list.
 - Update `recommend` node: prompt pairs yarn candidates with specific pattern candidates (not abstract archetypes).
-- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
 - Update `format_output`: show pattern title and URL alongside yarn and rationale.
 - Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
+
+### Phase 6b — Observability investigation ✅ COMPLETE (2026-05-31)
+
+Focused pass on tracing quality before Phase 6 adds more nodes.
+
+**Issues resolved:**
+
+1. **Token cost always $0.00 → fixed.** Root causes: (a) `@observe` creates a SPAN by default; usage/cost fields are silently ignored on SPANs — only GENERATION observations track them. Fixed by adding `as_type="generation"` to the `recommend` decorator. (b) Token counts from the LangChain call were not being reported to Langfuse. Fixed by using `with_structured_output(..., include_raw=True)` to get the raw `AIMessage` back, reading `usage_metadata` from it, and reporting via `langfuse_context.update_current_observation(usage=ModelUsage(...))`. Also passes `model=model_name` so Langfuse can look up pricing.
+
+2. **Full stash in every span → fixed.** Added `langfuse_context.update_current_observation(input=...)` at the top of every node to replace the auto-captured `GraphState` with a compact summary (user input + stash/candidate counts). The `normalized_stash` list (1,300+ items in live mode) no longer appears in any span.
+
+3. **Test traces polluting Langfuse → fixed.** `autouse` `disable_langfuse` fixture in `tests/conftest.py` unsets Langfuse env vars for all tests. `@pytest.mark.eval` tests are also suppressed — they use a mock LLM in CI and the full eval is run via `skeinminder eval`, not pytest.
+
+4. **Model pricing not configured in self-hosted Langfuse.** Langfuse self-hosted has no pre-populated model pricing table; cost shows as `None` until models are registered. **Decision: add model registration to `setup_langfuse_dataset.py`.** This is the right pattern for both local dev and self-hosted production — run the script once after each fresh deployment. `langfuse Cloud` would handle this automatically, but we're targeting self-hosted. Haiku 4.5, Sonnet 4.6, and Opus 4.7 pricing is registered by the script. Update prices there when Anthropic changes rates.
+
+5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
 ### Phase 7 — Human approval checkpoints
 

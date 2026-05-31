@@ -29,7 +29,7 @@ skeinminder recommend "<goal>" --fixture  # same, using fixture stash instead of
 uv run python -m skeinminder.ravelry.recorder        # record fresh fixtures from live API
 uv run python -m skeinminder.ravelry.recorder --raw  # save pre-Pydantic JSON to tests/fixtures/raw/ (gitignored)
 
-uv run python -m skeinminder.scripts.setup_langfuse_dataset  # create skeinminder-eval-v1 dataset (idempotent)
+uv run python -m skeinminder.scripts.setup_langfuse_dataset  # register model pricing + create eval dataset (idempotent; re-run after docker compose down -v)
 
 skeinminder eval                       # run two-layer eval suite (all examples)
 skeinminder eval --example-id <id>     # run a single example by id
@@ -92,7 +92,7 @@ src/skeinminder/
     graph.py       # build_graph() — compiles the LangGraph StateGraph
     nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality, low_confidence_output, recommend, format_output — all @observe-decorated
   scripts/
-    setup_langfuse_dataset.py  # idempotent script to create skeinminder-eval-v1 dataset and upsert golden examples
+    setup_langfuse_dataset.py  # idempotent bootstrap: registers Anthropic model pricing in Langfuse, then creates skeinminder-eval-v1 dataset and upserts golden examples
   config.py        # get_ravelry_credentials() from .env
   cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`; _run_recommend() carries root @observe trace
   eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()

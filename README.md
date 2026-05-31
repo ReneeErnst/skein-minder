@@ -139,10 +139,16 @@ LANGFUSE_PUBLIC_KEY=lf-pk-skeinminder-local
 LANGFUSE_SECRET_KEY=lf-sk-skeinminder-local
 LANGFUSE_HOST=http://localhost:3000
 
-skeinminder recommend "I want a quick hat" --fixture  # run generates a trace
+# One-time bootstrap: registers model pricing and creates the eval dataset.
+# Re-run this any time you reset volumes (docker compose down -v).
+uv run python -m skeinminder.scripts.setup_langfuse_dataset
+
+skeinminder recommend "I want a quick hat" --fixture  # generates a trace
 ```
 
-Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinminder recommend` call creates one root trace (`skeinminder-recommend`) with child spans for every graph node.
+Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinminder recommend` call creates one root trace (`skeinminder-recommend`) with child spans for every graph node. Token counts and cost appear on the `recommend` generation.
+
+**Production note:** In a self-hosted production deployment, run the setup script as part of your deployment bootstrap. If using Langfuse Cloud, model pricing is pre-configured and the setup script only needs to create the eval dataset.
 
 ### Eval suite
 
