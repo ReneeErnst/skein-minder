@@ -71,17 +71,22 @@ LANGFUSE_HOST=          # defaults to http://localhost:3000
 
 Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
 
-## What's built (Phases 1–5)
+## What's built (Phases 1–6 partial)
 
 ```
 src/skeinminder/
   ravelry/
-    client.py      # RavelryClient — Basic Auth, pagination, retry
-    models.py      # Raw Pydantic models (prefix Raw*) — thin wrappers around API JSON
-    normalizer.py  # normalize_stash() → StashItem; weight/fiber scoring utilities
-    sanitizer.py   # redacts PII before fixture files are committed
-    recorder.py    # one-shot script to capture live API responses as fixture JSON
-    exceptions.py  # RavelryAPIError, RavelryAuthError, RavelryRateLimitError, NormalizationError
+    client.py           # RavelryClient — Basic Auth, pagination, retry
+                        #   Phase 6: + get_library_pattern_ids, search_patterns, get_pattern_details
+    models.py           # Raw Pydantic models (prefix Raw*) — thin wrappers around API JSON
+    normalizer.py       # normalize_stash() → StashItem; weight/fiber scoring utilities
+    patterns.py         # Phase 6: RawPattern, RawPatternFull, RawLibrarySearchResponse,
+                        #   PatternSummary, normalize_pattern()
+    sanitizer.py        # redacts PII before fixture files are committed
+    recorder.py         # one-shot script to capture live API responses as fixture JSON
+    exceptions.py       # RavelryAPIError, RavelryAuthError, RavelryRateLimitError, NormalizationError
+    fixture_transport.py  # Phase 6: FixtureTransport moved here from tests/conftest.py;
+                          #   routes pattern API URLs to fixture files
   graph/
     state.py       # GraphState (TypedDict), StashFilter, Recommendation
     graph.py       # build_graph() — compiles the LangGraph StateGraph
@@ -93,10 +98,14 @@ src/skeinminder/
   eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()
   observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
-  conftest.py      # FixtureTransport (httpx transport) + fixture_client fixture
+  conftest.py      # fixture_client and fixture_transport fixtures (FixtureTransport now lives in src/)
   test_eval.py     # unit tests (CI) + @pytest.mark.eval integration tests (real LLM)
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
   fixtures/eval/   # three golden examples (project-first, stash-first, low-confidence); example-schema.json documents the shape
+  fixtures/pattern_search_free.json      # Phase 6: free-pattern search fixture
+  fixtures/pattern_search_popular.json   # Phase 6: popular-pattern search fixture
+  fixtures/pattern_detail.json           # Phase 6: batch pattern detail fixture
+  fixtures/library_search_patterns.json  # Phase 6: user library search fixture
 docker-compose.yml # Langfuse v2 self-hosted + Postgres; pre-seeded org/project/API keys
 ```
 
@@ -134,7 +143,7 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
 - Tests use `FixtureTransport` (injected into `RavelryClient` via the `transport=` kwarg) — never hit the live Ravelry API in tests.
-- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 6 stub).
+- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 7 stub).
 - Every future write tool needs a dry-run mode.
 
 ## Git workflow

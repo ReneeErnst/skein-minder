@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-16_
+_Last updated: 2026-05-30_
 
 ## Working project name
 
@@ -208,7 +208,7 @@ tests/
 - Accessory-quantity yarn passes through for sweater goals.
 - LLM forces 3 recommendations even when stash cannot support them.
 
-### Phases 3b–8 — IN PROGRESS
+### Phases 3b–5 — COMPLETE (merged to main)
 
 ---
 
@@ -537,7 +537,7 @@ Scope:
 
 No new features. No spec needed — implement as a single PR with a checklist commit message.
 
-### Phase 4 — Observability (Langfuse)
+### Phase 4 — Observability (Langfuse) ✅ COMPLETE
 
 Goal: wire in self-hosted Langfuse tracing so every graph run is visible as a structured trace — nodes, LLM calls, filter counts, token usage, and latency — without relying on a third-party SaaS. Also lay the eval infrastructure scaffold that Phase 5 needs.
 
@@ -552,7 +552,7 @@ Phase 4 does NOT include eval logic (assertions, scoring, CLI). That belongs in 
 
 Spec: `docs/superpowers/specs/YYYY-MM-DD-phase4-observability.md` (to be written)
 
-### Phase 5 — Evaluation
+### Phase 5 — Evaluation ✅ COMPLETE
 
 Goal: build a two-layer eval suite using the Langfuse infrastructure from Phase 4. Deterministic assertions catch hallucinated stash IDs and filter violations; LLM-as-judge scores recommendation quality (yarn-goal fit and reasoning coherence).
 
@@ -568,7 +568,7 @@ Key decisions:
 
 Spec: `docs/superpowers/specs/YYYY-MM-DD-phase5-evaluation.md` (to be written)
 
-### Phase 6 — Pattern integration
+### Phase 6 — Pattern integration 🔄 IN PROGRESS
 
 Goal: connect recommendations to real Ravelry patterns. Output is yarn+pattern pairs, not abstract project ideas.
 
@@ -584,13 +584,20 @@ Pattern priority order:
 Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`):
 - `GET /patterns/search.json` — full-text + filter search; accepts `craft`, `weight`, `availability`, `sort`.
 - `GET /people/{username}/library/search.json` — search user's owned patterns.
-- `GET /patterns/{id}.json` — pattern detail including `yardage`, `yardage_max`, `yarn_weight`, `craft`, `pdf_in_library`.
+- `GET /patterns.json?ids=ID1+ID2+...` — batch pattern detail including `yardage`, `yardage_max`, `yarn_weight`.
 
-Tasks:
-- Add `RavelryClient` methods for pattern search and pattern detail.
-- Add raw pattern models (`RawPattern`, `RawPatternList`) and a normalized `PatternSummary` domain model.
-- Add `pattern_search` node to the graph: takes filtered stash, searches for matching patterns, returns ranked candidates.
-- Update `recommend` node: prompt now asks LLM to pair yarn candidates with specific pattern candidates.
+**Completed:**
+- `patterns.py` — `RawPattern` (search list shape), `RawPatternFull` (batch detail shape), `RawLibraryVolume`, `RawLibrarySearchResponse`, `PatternSummary` (normalized domain model), `normalize_pattern()`. Tier assignment: library > free > popular.
+- `FixtureTransport` moved from `tests/conftest.py` to `src/skeinminder/ravelry/fixture_transport.py` and extended with routes for all four pattern API endpoints.
+- Pattern fixture files committed: `pattern_search_free.json`, `pattern_search_popular.json`, `pattern_detail.json`, `library_search_patterns.json`.
+- `RavelryClient.get_library_pattern_ids(username)` — paginates library search; returns empty set on any failure (graceful degradation).
+- `RavelryClient.search_patterns(weight, query, availability, sort, page_size)` — always passes `craft=knitting`; returns empty list on failure.
+- `RavelryClient.get_pattern_details(pattern_ids)` — batch call to `/patterns.json`; returns partial map on parse failures.
+- 161 tests passing (CI clean). Branch: `phase6`.
+
+**Remaining:**
+- Add `pattern_search` node to the graph: takes filtered stash candidates, calls `search_patterns` + `get_pattern_details`, returns ranked `PatternSummary` list.
+- Update `recommend` node: prompt pairs yarn candidates with specific pattern candidates (not abstract archetypes).
 - Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
 - Update `format_output`: show pattern title and URL alongside yarn and rationale.
 - Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
@@ -644,7 +651,8 @@ skein-minder/
   pyproject.toml
   uv.lock
   Makefile
-  .env.example         # RAVELRY_USERNAME and RAVELRY_PASSWORD stubs
+  docker-compose.yml   # Langfuse v2 + Postgres; pre-seeded API keys
+  .env.example         # RAVELRY_USERNAME / RAVELRY_PASSWORD / ANTHROPIC_API_KEY stubs
   .env                 # GITIGNORED — personal credentials
   .pre-commit-config.yaml
   .github/workflows/ci.yml
@@ -652,18 +660,30 @@ skein-minder/
     skeinminder/
       __init__.py
       config.py          # ConfigError, get_ravelry_credentials, RAVELRY_BASE_URL
-      cli.py             # click group + stash command with --fixture flag
+      cli.py             # skeinminder stash / recommend / eval click commands
+      observability.py   # get_langfuse_client() — no-op when credentials absent
+      eval.py            # load_examples, run_example, assert_example, judge_example, format_table
       ravelry/
         __init__.py
-        exceptions.py    # RavelryError hierarchy + NormalizationError
-        models.py        # raw Pydantic models (RawUser, RawYarn, RawPack, RawStashItem, etc.)
-        client.py        # RavelryClient (Basic Auth, retries, pagination)
-        normalizer.py    # StashItem, enums, normalize_stash, scoring helpers
-        sanitizer.py     # strip personal data before committing fixtures
-        recorder.py      # one-shot: captures live API responses as fixtures; --raw for pre-Pydantic capture
+        exceptions.py         # RavelryError hierarchy + NormalizationError
+        models.py             # raw Pydantic models (RawUser, RawYarn, RawPack, RawStashItem, etc.)
+        client.py             # RavelryClient (Basic Auth, retries, pagination, pattern search)
+        normalizer.py         # StashItem, enums, normalize_stash, scoring helpers
+        patterns.py           # RawPattern, RawPatternFull, PatternSummary, normalize_pattern
+        fixture_transport.py  # FixtureTransport — routes test HTTP to JSON fixture files
+        sanitizer.py          # strip personal data before committing fixtures
+        recorder.py           # one-shot: captures live API responses as fixtures
+      graph/
+        __init__.py
+        state.py    # GraphState (TypedDict), StashFilter, Recommendation
+        graph.py    # build_graph() — compiles the LangGraph StateGraph
+        nodes.py    # all graph nodes: supervisor, filters, assess_filter_quality,
+                    #   low_confidence_output, recommend, format_output
+      scripts/
+        setup_langfuse_dataset.py  # idempotent: create dataset + upsert golden examples
   tests/
     __init__.py
-    conftest.py          # FixtureTransport + fixture_client / fixture_transport fixtures
+    conftest.py          # fixture_client / fixture_transport fixtures (use FixtureTransport from src/)
     test_cli.py
     test_config.py
     test_models.py
@@ -671,12 +691,22 @@ skein-minder/
     test_ravelry_client.py
     test_sanitizer.py
     test_scoring.py
-    test_placeholder.py  # empty, keeps pytest happy before real tests exist
+    test_patterns.py     # Phase 6: RawPattern models, normalize_pattern, PatternSummary
+    test_graph_state.py
+    test_supervisor.py
+    test_filters.py
+    test_graph.py
+    test_eval.py         # CI-safe unit tests + @pytest.mark.eval integration tests
     fixtures/
-      current_user.json        # sanitized: real id, username="[REDACTED]"
-      stash_list.json          # 10 representative items (trimmed from full stash)
-      stash_detail_sample.json # first 5 items from stash_list
-      stash_list_full.json     # 1,379 items — GITIGNORED, local only
+      current_user.json              # sanitized: real id, username="[REDACTED]"
+      stash_list.json                # 10 representative items
+      stash_detail_sample.json       # first 5 items from stash_list
+      stash_list_full.json           # 1,379 items — GITIGNORED, local only
+      pattern_search_free.json       # Phase 6: free-pattern search results
+      pattern_search_popular.json    # Phase 6: popular-pattern search results
+      pattern_detail.json            # Phase 6: batch pattern detail response
+      library_search_patterns.json   # Phase 6: user library search response
+      eval/                          # three golden examples + example-schema.json
 ```
 
 ---
@@ -719,14 +749,6 @@ Answered (2026-05-16 — full API docs captured in `docs/ravelry-api/`):
 - Read back any created/updated resource to verify success.
 
 ---
-
-## Pending housekeeping
-
-- **Regenerate Ravelry credentials.** The API access key was exposed in a chat session. Revoke the current Personal Account Access app key and generate a new one. Update `.env` with the new credentials.
-- **Merge `phase2b` to `main`.** PR pending. 73 tests passing, CI clean.
-
----
-
 
 ---
 

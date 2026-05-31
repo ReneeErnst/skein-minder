@@ -49,8 +49,11 @@ flowchart TD
         Eval["Eval Suite\nLangfuse dataset · LLM-as-judge · pytest integration"]
     end
 
-    subgraph future ["📋 Phases 6–8 — planned"]
-        Pattern["Pattern Scout Agent"]
+    subgraph inprogress ["🔄 Phase 6 — in progress"]
+        Pattern["Pattern Scout Agent\nPatternSummary · search_patterns · get_pattern_details"]
+    end
+
+    subgraph future ["📋 Phases 7–8 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
@@ -58,6 +61,7 @@ flowchart TD
     Stash --> Norm --> Graph --> Obs --> Eval
     Eval --> Pattern --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
+
 ```
 
 ---
@@ -83,7 +87,7 @@ flowchart TD
 | 3 | LangGraph MVP — stash-to-recommendation | ✅ Complete |
 | 4 | Tracing and observability (Langfuse) | ✅ Complete |
 | 5 | Eval suite (deterministic assertions + LLM-as-judge) | ✅ Complete |
-| 6 | Pattern search and candidate matching | 📋 Planned |
+| 6 | Pattern search and candidate matching | 🔄 In Progress |
 | 7 | Human approval checkpoints | 📋 Planned |
 | 8 | Ravelry project write-back | 📋 Planned |
 

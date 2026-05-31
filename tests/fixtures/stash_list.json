@@ -501,6 +501,56 @@
       "color_family_name": "Purple"
     },
     {
+      "id": 22702197,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Dark Andromeda",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 110466,
+        "name": "Katahdin",
+        "yarn_company_name": "Miss Babs",
+        "yarn_weight": {
+          "id": 13,
+          "name": "Light Fingering"
+        },
+        "grams": 400.0,
+        "yardage": 1750.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red"
+    },
+    {
+      "id": 22702189,
+      "permalink": "[REDACTED]",
+      "colorway_name": "Pure of Heart",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 110466,
+        "name": "Katahdin",
+        "yarn_company_name": "Miss Babs",
+        "yarn_weight": {
+          "id": 13,
+          "name": "Light Fingering"
+        },
+        "grams": 400.0,
+        "yardage": 1750.0,
+        "fiber_categories": []
+      },
+      "color_family_name": "Red"
+    },
+    {
       "id": 19047514,
       "permalink": "[REDACTED]",
       "colorway_name": "809 Solis",
@@ -549,6 +599,31 @@
         "fiber_categories": []
       },
       "color_family_name": "Red"
+    },
+    {
+      "id": 29728024,
+      "permalink": "[REDACTED]",
+      "colorway_name": "White",
+      "stash_status": {
+        "id": 1,
+        "name": "In stash"
+      },
+      "skeins": null,
+      "notes": null,
+      "yarn_name": null,
+      "yarn": {
+        "id": 66891,
+        "name": "Cotton Tale 8",
+        "yarn_company_name": "Pisgah Yarn & Dyeing Co.",
+        "yarn_weight": {
+          "id": 10,
+          "name": "Sport"
+        },
+        "grams": 454.0,
+        "yardage": 1860.0,
+        "fiber_categories": []
+      },
+      "color_family_name": null
     },
     {
       "id": 23108411,
@@ -870,8 +945,8 @@
   ],
   "paginator": {
     "page": 1,
-    "page_size": 36,
-    "results": 36,
+    "page_size": 39,
+    "results": 39,
     "page_count": 1,
     "last_page": true
   }

@@ -56,7 +56,7 @@ def test_client_sends_basic_auth_header() -> None:
 
 def test_get_stash_list_returns_items(fixture_client: RavelryClient) -> None:
     items = fixture_client.get_stash_list("testuser")
-    assert len(items) == 36
+    assert len(items) == 39
     assert all(isinstance(item, RawStashItem) for item in items)
     assert items[0].id == 15878461
     assert items[0].colorway_name == "7888 Iris"
