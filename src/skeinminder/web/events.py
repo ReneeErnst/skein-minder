@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
+
+from langfuse.decorators import langfuse_context, observe
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.state import GraphState, Recommendation
@@ -71,6 +74,33 @@ def _build_result_payload(
     }
 
 
+@observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
+async def _invoke_graph(
+    graph: Any,
+    initial_state: GraphState,
+    *,
+    goal: str,
+    event_queue: "asyncio.Queue[tuple[str, Any]]",
+) -> None:
+    """Run the LangGraph pipeline inside a Langfuse trace, feeding events to a queue.
+
+    Creates the root 'skeinminder-recommend' trace so all node @observe calls
+    nest under it as spans rather than creating separate top-level traces. Signals
+    completion with a ("done", None) sentinel, or ("error", exc) on failure.
+    """
+    langfuse_context.update_current_trace(
+        input={"user_goal": goal},
+        tags=["web"],
+    )
+    try:
+        async for event in graph.astream_events(initial_state, version="v2"):
+            await event_queue.put(("event", event))
+    except Exception as exc:
+        await event_queue.put(("error", exc))
+    finally:
+        await event_queue.put(("done", None))
+
+
 async def stream_graph_events(
     goal: str,
     stash: list[StashItem],
@@ -104,39 +134,51 @@ async def stream_graph_events(
     }
 
     graph = build_graph()
+    event_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     recommendations: list[Recommendation] = []
     pattern_candidates: list[PatternSummary] = []
     formatted_output = ""
 
-    try:
-        async for event in graph.astream_events(initial_state, version="v2"):
-            event_type: str = event.get("event", "")
-            node: str = event.get("metadata", {}).get("langgraph_node", "")
+    graph_task = asyncio.create_task(
+        _invoke_graph(graph, initial_state, goal=goal, event_queue=event_queue)
+    )
 
-            if node not in _KNOWN_NODES:
-                continue
+    while True:
+        kind, payload = await event_queue.get()
+        if kind == "done":
+            break
+        if kind == "error":
+            yield _sse({"type": "error", "message": str(payload)})
+            await graph_task
+            return
 
-            if event_type == "on_chain_start":
-                yield _sse({"type": "node_start", "node": node})
-            elif event_type == "on_chain_end":
-                yield _sse({"type": "node_complete", "node": node})
-                output: Any = event.get("data", {}).get("output", {})
-                if isinstance(output, dict):
-                    if "recommendations" in output:
-                        recommendations = output["recommendations"]
-                    if "pattern_candidates" in output:
-                        pattern_candidates = output["pattern_candidates"]
-                    if output.get("formatted_output"):
-                        formatted_output = output["formatted_output"]
-    except Exception as exc:
-        yield _sse({"type": "error", "message": str(exc)})
-        return
+        event = payload
+        event_type: str = event.get("event", "")
+        node: str = event.get("metadata", {}).get("langgraph_node", "")
 
-    payload = _build_result_payload(
+        if node not in _KNOWN_NODES:
+            continue
+
+        if event_type == "on_chain_start":
+            yield _sse({"type": "node_start", "node": node})
+        elif event_type == "on_chain_end":
+            yield _sse({"type": "node_complete", "node": node})
+            output: Any = event.get("data", {}).get("output", {})
+            if isinstance(output, dict):
+                if "recommendations" in output:
+                    recommendations = output["recommendations"]
+                if "pattern_candidates" in output:
+                    pattern_candidates = output["pattern_candidates"]
+                if output.get("formatted_output"):
+                    formatted_output = output["formatted_output"]
+
+    await graph_task  # ensure Langfuse trace is finalized before yielding result
+
+    result_payload = _build_result_payload(
         recommendations, pattern_candidates, formatted_output
     )
-    yield _sse(payload)
+    yield _sse(result_payload)
     try:
-        LAST_RUN_PATH.write_text(json.dumps(payload))
+        LAST_RUN_PATH.write_text(json.dumps(result_payload))
     except OSError:
         pass
