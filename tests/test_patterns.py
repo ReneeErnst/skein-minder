@@ -78,7 +78,7 @@ def test_get_library_pattern_ids_happy_path(fixture_client: RavelryClient) -> No
 
 def test_get_library_pattern_ids_empty_volumes(fixture_client: RavelryClient) -> None:
     empty_response: dict[str, object] = {
-        "paginator": {"page": 1, "page_size": 100, "results": 0, "page_count": 1},
+        "paginator": {"page": 1, "page_size": 100, "results": 0, "pages": 1},
         "volumes": [],
     }
     with patch.object(fixture_client, "_get", return_value=empty_response):
