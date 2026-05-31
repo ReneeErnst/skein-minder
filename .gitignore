@@ -227,5 +227,7 @@ tests/fixtures/stash_list_full.json
 tests/fixtures/raw/
 traces_export.json
 
-# web UI demo artifact
+# web UI demo artifacts
 last_run.json
+web.log
+.web.pid

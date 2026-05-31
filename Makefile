@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check export-traces services web up down down-clean help
+.PHONY: install lint format typecheck test check export-traces services web up _stop-web down down-clean help
 .DEFAULT_GOAL := help
 
 install: ## install dependencies
@@ -42,16 +42,20 @@ services: ## start Langfuse + Postgres and run one-time dataset bootstrap (model
 	@echo " ready."
 	uv run python -m skeinminder.scripts.setup_langfuse_dataset
 
-web: ## start web UI in fixture mode at http://localhost:8000 (pass PORT=N to change port)
+web: ## start web UI in foreground at http://localhost:8000 (pass PORT=N to change port)
 	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),)
 
-up: services ## start everything: Langfuse + web UI (Ctrl+C stops the UI; Langfuse keeps running)
-	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),)
+up: services ## start everything in background — terminal freed when ready; use 'make down' to stop
+	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),) > web.log 2>&1 & echo $$! > .web.pid
+	@echo "Web UI running at http://localhost:$(or $(PORT),8000)  (logs: web.log)"
 
-down: ## stop Langfuse containers, keep history (volumes preserved)
+_stop-web:
+	@if [ -f .web.pid ]; then kill $$(cat .web.pid) 2>/dev/null || true; rm -f .web.pid; fi
+
+down: _stop-web ## stop web UI + Langfuse containers (history preserved)
 	docker compose down
 
-down-clean: ## stop Langfuse and wipe all data (next 'make up' re-initializes model pricing + eval dataset)
+down-clean: _stop-web ## stop web UI + Langfuse and wipe all data (next 'make up' re-initializes)
 	docker compose down -v
 
 help: ## show this help
