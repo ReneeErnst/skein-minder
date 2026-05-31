@@ -31,6 +31,7 @@ class EvalExpected(BaseModel, extra="ignore"):
     stash_ids_subset_of_input: bool
     no_weight_mixing: bool
     filter_confidence: str
+    pattern_ids_from_candidates: bool = False
 
 
 class EvalExample(BaseModel, extra="ignore"):
@@ -156,6 +157,22 @@ def assert_example(example: EvalExample, state: GraphState) -> list[AssertionRes
         )
     )
 
+    # 5. pattern_ids_from_candidates
+    if exp.pattern_ids_from_candidates:
+        candidate_ids = {p.pattern_id for p in (state["pattern_candidates"] or [])}
+        rogue = [
+            rec.pattern_id
+            for rec in recs
+            if rec.pattern_id is not None and rec.pattern_id not in candidate_ids
+        ]
+        results.append(
+            AssertionResult(
+                name="pattern_ids_from_candidates",
+                passed=not rogue,
+                detail=f"rogue pattern IDs: {rogue}" if rogue else "ok",
+            )
+        )
+
     return results
 
 
@@ -163,6 +180,7 @@ def run_example(example: EvalExample) -> GraphState:
     """Run the full LangGraph pipeline for one golden example.
 
     Stash is injected directly from the example rather than fetched from Ravelry.
+    Uses fixture transport for pattern_search so no live Ravelry credentials needed.
     """
     from typing import cast
 
@@ -183,8 +201,8 @@ def run_example(example: EvalExample) -> GraphState:
             "formatted_output": None,
             "filter_confidence": "",
             "force_recommend": False,
-            "ravelry_username": "",
-            "use_fixture": False,
+            "ravelry_username": "fixture_user",
+            "use_fixture": True,
             "pattern_candidates": [],
         }
     )

@@ -26,6 +26,7 @@
     "recommendation_count_max": 0,
     "stash_ids_subset_of_input": true,
     "no_weight_mixing": true,
-    "filter_confidence": "low"
+    "filter_confidence": "low",
+    "pattern_ids_from_candidates": true
   }
 }
