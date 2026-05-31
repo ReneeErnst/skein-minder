@@ -1,6 +1,6 @@
 {
   "patterns": {
-    "1001": {"id": 1001, "name": "Simple Stockinette Hat", "permalink": "simple-stockinette-hat", "free": true, "yardage": 100, "yardage_max": 150, "yarn_weight": {"id": 10, "name": "DK"}},
+    "1001": {"id": 1001, "name": "Simple Stockinette Hat", "permalink": "simple-stockinette-hat", "free": true, "yardage": 100, "yardage_max": 150, "yarn_weight": {"id": 10, "name": "DK"}, "first_photo": {"medium_url": "https://picsum.photos/seed/ravelry1001/640/480"}},
     "1002": {"id": 1002, "name": "Lace Shawlette", "permalink": "lace-shawlette", "free": true, "yardage": 400, "yardage_max": 600, "yarn_weight": {"id": 9, "name": "Fingering"}},
     "1003": {"id": 1003, "name": "Cabled Mittens", "permalink": "cabled-mittens", "free": true, "yardage": 200, "yardage_max": null, "yarn_weight": {"id": 10, "name": "DK"}},
     "1004": {"id": 1004, "name": "Ribbed Socks", "permalink": "ribbed-socks", "free": true, "yardage": 350, "yardage_max": 450, "yarn_weight": {"id": 9, "name": "Fingering"}},

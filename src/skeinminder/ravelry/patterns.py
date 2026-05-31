@@ -23,6 +23,14 @@ class RawPatternYarnWeight(BaseModel):
     name: str
 
 
+class RawFirstPhoto(BaseModel):
+    """Photo thumbnail embedded in a pattern detail response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    medium_url: str | None = None
+
+
 class RawPattern(BaseModel):
     """Pattern shape returned by patterns/search (list format). No yardage."""
 
@@ -46,6 +54,7 @@ class RawPatternFull(BaseModel):
     yardage: int | None = None
     yardage_max: int | None = None
     yarn_weight: RawPatternYarnWeight | None = None
+    first_photo: RawFirstPhoto | None = None
 
 
 class RawLibraryVolume(BaseModel):
@@ -85,6 +94,7 @@ class PatternSummary(BaseModel):
     yardage_max: int | None
     weight_name: str | None
     tier: Literal["library", "free", "popular"]
+    photo_url: str | None = None
 
 
 def normalize_pattern(raw: RawPatternFull, library_ids: set[int]) -> PatternSummary:
@@ -114,4 +124,5 @@ def normalize_pattern(raw: RawPatternFull, library_ids: set[int]) -> PatternSumm
         yardage_max=raw.yardage_max,
         weight_name=raw.yarn_weight.name if raw.yarn_weight else None,
         tier=tier,
+        photo_url=raw.first_photo.medium_url if raw.first_photo else None,
     )
