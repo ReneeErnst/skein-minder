@@ -160,3 +160,22 @@ def test_get_pattern_details_skips_invalid_entry(fixture_client: RavelryClient) 
         result = fixture_client.get_pattern_details([1001])
     assert 1001 in result
     assert result[1001].name == "Good Pattern"
+
+
+def test_search_patterns_skips_invalid_entry(fixture_client: RavelryClient) -> None:
+    bad_response: dict[str, object] = {
+        "patterns": [
+            {
+                "id": 2001,
+                "name": "Good Pattern",
+                "permalink": "good-pattern",
+                "free": False,
+            },
+            "not-a-dict",
+        ],
+        "paginator": {"page": 1, "page_size": 20, "results": 2, "page_count": 1},
+    }
+    with patch.object(fixture_client, "_get", return_value=bad_response):
+        result = fixture_client.search_patterns(weight="worsted")
+    assert len(result) == 1
+    assert result[0].id == 2001

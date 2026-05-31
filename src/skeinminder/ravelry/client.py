@@ -149,11 +149,19 @@ class RavelryClient:
                 if page >= parsed.paginator.pages:
                     break
                 page += 1
-        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+        except (
+            RavelryAPIError,
+            RavelryAuthError,
+            RavelryRateLimitError,
+            ValidationError,
+        ):
             logger.warning(
-                "Library pattern ID fetch failed; continuing without library data."
+                "Library pattern ID fetch failed on page %d;"
+                " returning %d IDs collected so far.",
+                page,
+                len(ids),
             )
-            return set()
+            return ids
         return ids
 
     def search_patterns(
@@ -195,7 +203,13 @@ class RavelryClient:
         raw_list = data.get("patterns", [])
         if not isinstance(raw_list, list):
             return []
-        return [RawPattern.model_validate(p) for p in raw_list]
+        result_patterns: list[RawPattern] = []
+        for item in raw_list:
+            try:
+                result_patterns.append(RawPattern.model_validate(item))
+            except ValidationError:
+                logger.debug("Could not parse pattern entry; skipping.")
+        return result_patterns
 
     def get_pattern_details(self, pattern_ids: list[int]) -> dict[int, RawPatternFull]:
         """Fetch full pattern details for a list of IDs in a single batch call.
