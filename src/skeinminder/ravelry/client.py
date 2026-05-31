@@ -20,7 +20,7 @@ from skeinminder.ravelry.models import (
     RawStashListResponse,
     RawUser,
 )
-from skeinminder.ravelry.patterns import RawLibrarySearchResponse
+from skeinminder.ravelry.patterns import RawLibrarySearchResponse, RawPattern
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,47 @@ class RavelryClient:
             )
             return set()
         return ids
+
+    def search_patterns(
+        self,
+        weight: str,
+        query: str | None = None,
+        availability: str | None = None,
+        sort: str = "projects",
+        page_size: int = 20,
+    ) -> list[RawPattern]:
+        """Search the Ravelry pattern database for knitting patterns by weight.
+
+        Always passes craft=knitting. Returns an empty list on any API failure.
+
+        Args:
+            weight: Ravelry weight slug (e.g. "worsted", "dk").
+            query: Optional goal keyword (e.g. "cardigan").
+            availability: Optional filter (e.g. "free").
+            sort: Sort order — "projects" (default) or "best".
+            page_size: Number of results per page. Defaults to 20.
+        """
+        params: dict[str, str | int] = {
+            "craft": "knitting",
+            "weight": weight,
+            "sort": sort,
+            "page_size": page_size,
+        }
+        if query:
+            params["query"] = query
+        if availability:
+            params["availability"] = availability
+
+        try:
+            data = self._get("/patterns/search.json", params=params)
+        except (RavelryAPIError, RavelryAuthError, RavelryRateLimitError):
+            logger.warning("Pattern search failed; returning empty list.")
+            return []
+
+        raw_list = data.get("patterns", [])
+        if not isinstance(raw_list, list):
+            return []
+        return [RawPattern.model_validate(p) for p in raw_list]
 
     def close(self) -> None:
         self._client.close()

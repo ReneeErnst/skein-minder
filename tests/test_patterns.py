@@ -10,6 +10,7 @@ import pytest
 from skeinminder.ravelry.client import RavelryClient
 from skeinminder.ravelry.exceptions import RavelryAPIError
 from skeinminder.ravelry.patterns import (
+    RawPattern,
     RawPatternFull,
     RawPatternYarnWeight,
     normalize_pattern,
@@ -91,3 +92,25 @@ def test_get_library_pattern_ids_api_failure(fixture_client: RavelryClient) -> N
     with patch.object(fixture_client, "_get", side_effect=err):
         result = fixture_client.get_library_pattern_ids("testuser")
     assert result == set()
+
+
+def test_search_patterns_returns_popular_by_default(
+    fixture_client: RavelryClient,
+) -> None:
+    result = fixture_client.search_patterns(weight="worsted")
+    assert len(result) == 5
+    assert all(isinstance(p, RawPattern) for p in result)
+    assert result[0].id == 2001
+
+
+def test_search_patterns_free_filter(fixture_client: RavelryClient) -> None:
+    result = fixture_client.search_patterns(weight="fingering", availability="free")
+    assert len(result) == 4
+    assert all(p.free for p in result)
+
+
+def test_search_patterns_api_failure(fixture_client: RavelryClient) -> None:
+    err = RavelryAPIError(500, "/test")
+    with patch.object(fixture_client, "_get", side_effect=err):
+        result = fixture_client.search_patterns(weight="worsted")
+    assert result == []
