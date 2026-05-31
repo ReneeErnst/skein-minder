@@ -13,6 +13,7 @@ from langfuse.decorators import (
     langfuse_context,
     observe,
 )
+from langfuse.model import ModelUsage
 from pydantic import BaseModel
 
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
@@ -62,6 +63,12 @@ def supervisor(state: GraphState) -> dict[str, Any]:
     "i have"), and extracts weight/yardage into a StashFilter. Otherwise sets mode to
     "project_first" and passes the raw user input as user_goal.
     """
+    langfuse_context.update_current_observation(
+        input={
+            "user_input": state["user_input"],
+            "stash_count": len(state["normalized_stash"]),
+        }
+    )
     text = state["user_input"].lower()
     mode = (
         "stash_first"
@@ -89,6 +96,12 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     non-sweater-quantity items when a sweater-scale garment is mentioned;
     fiber mismatches for the detected garment type. Sorts by yards_total descending.
     """
+    langfuse_context.update_current_observation(
+        input={
+            "user_goal": state.get("user_goal"),
+            "stash_count": len(state["normalized_stash"]),
+        }
+    )
     stash = state["normalized_stash"]
     goal = (state["user_goal"] or "").lower()
     weight = find_weight_in_text(goal)
@@ -127,8 +140,14 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
     Excludes weaving yarn, then applies filters in order: specific_stash_id, weight,
     min_yards, max_yards, color_family. Results are sorted by yards_total descending.
     """
-    stash = state["normalized_stash"]
     f = state["stash_filter"]
+    langfuse_context.update_current_observation(
+        input={
+            "stash_filter": f.model_dump() if f is not None else None,
+            "stash_count": len(state["normalized_stash"]),
+        }
+    )
+    stash = state["normalized_stash"]
     cf = (
         f.color_family.lower() if f is not None and f.color_family is not None else None
     )
@@ -171,6 +190,9 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     available yardage is clearly insufficient for a sweater-scale goal (< 500 yards).
     """
     filtered = state["filtered_stash"]
+    langfuse_context.update_current_observation(
+        input={"filtered_count": len(filtered), "user_goal": state.get("user_goal")}
+    )
     if not filtered:
         langfuse_context.update_current_observation(
             metadata={"filter_confidence": "low"}
@@ -197,6 +219,9 @@ def low_confidence_output(state: GraphState) -> dict[str, Any]:
     or sets formatted_output to an exit message if not.
     """
     filtered = state["filtered_stash"]
+    langfuse_context.update_current_observation(
+        input={"filtered_count": len(filtered), "user_goal": state.get("user_goal")}
+    )
 
     lines = ["No strong yarn matches found for your goal."]
     if filtered:
@@ -273,17 +298,21 @@ def _format_stash_for_prompt(items: list[StashItem]) -> str:
     return "\n".join(lines)
 
 
-@observe(name="recommend")  # type: ignore[untyped-decorator]
+@observe(name="recommend", as_type="generation")  # type: ignore[untyped-decorator]
 def recommend(state: GraphState) -> dict[str, Any]:
     """Call the LLM with filtered stash and return up to 3 Recommendation objects.
 
     Uses the model named by SKEINMINDER_MODEL env var (default:
     claude-haiku-4-5-20251001). The system prompt is marked for prompt caching to
-    reduce cost on repeated calls. Token usage is captured via LangChain callback.
+    reduce cost on repeated calls. Token usage is read from usage_metadata on the
+    raw response and reported to Langfuse via update_current_observation.
     """
     model_name = os.getenv("SKEINMINDER_MODEL", "claude-haiku-4-5-20251001")
+    langfuse_context.update_current_observation(
+        input={"candidate_count": len(state["filtered_stash"]), "mode": state["mode"]},
+        model=model_name,
+    )
     client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
-    structured = client.with_structured_output(_RecommendationList)
 
     stash_summary = _format_stash_for_prompt(state["filtered_stash"])
 
@@ -308,7 +337,25 @@ def recommend(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    result: _RecommendationList = structured.invoke(messages)  # type: ignore[assignment]
+    structured = client.with_structured_output(_RecommendationList, include_raw=True)
+    response: dict[str, Any] = structured.invoke(messages)  # type: ignore[assignment]
+    result: _RecommendationList = response["parsed"]
+
+    raw_msg = response.get("raw")
+    if (
+        raw_msg is not None
+        and hasattr(raw_msg, "usage_metadata")
+        and raw_msg.usage_metadata
+    ):
+        um = raw_msg.usage_metadata
+        langfuse_context.update_current_observation(
+            usage=ModelUsage(
+                input=um.get("input_tokens", 0),
+                output=um.get("output_tokens", 0),
+                total=um.get("total_tokens", 0),
+                unit="TOKENS",
+            )
+        )
     langfuse_context.update_current_observation(
         metadata={"recommendation_count": len(result.recommendations)}
     )
@@ -321,6 +368,12 @@ def format_output(state: GraphState) -> dict[str, Any]:
 
     Resolves yarn_candidate_ids back to yarn names using normalized_stash.
     """
+    langfuse_context.update_current_observation(
+        input={
+            "recommendation_count": len(state["recommendations"] or []),
+            "mode": state["mode"],
+        }
+    )
     recs = state["recommendations"] or []
     stash_by_id = {item.stash_id: item for item in state["filtered_stash"]}
 

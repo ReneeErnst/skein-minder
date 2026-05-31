@@ -595,35 +595,28 @@ Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`
 - `RavelryClient.get_pattern_details(pattern_ids)` — batch call to `/patterns.json`; returns partial map on parse failures.
 - 161 tests passing (CI clean). Branch: `phase6`.
 
-**Remaining:**
+**Remaining (graph integration only — all API client and fixture work is done):**
+- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
 - Add `pattern_search` node to the graph: takes filtered stash candidates, calls `search_patterns` + `get_pattern_details`, returns ranked `PatternSummary` list.
 - Update `recommend` node: prompt pairs yarn candidates with specific pattern candidates (not abstract archetypes).
-- Update `Recommendation` model: add `pattern_id: int | None`, `pattern_name: str | None`, `pattern_url: str | None`.
 - Update `format_output`: show pattern title and URL alongside yarn and rationale.
 - Future hook (not in scope): when `low_confidence_output` fires, offer to search for yarn to buy that would satisfy the goal.
 
-### Phase 6b — Observability investigation (pre-pattern-graph work)
+### Phase 6b — Observability investigation ✅ COMPLETE (2026-05-31)
 
-Before wiring the pattern search node into the graph, do a focused pass on logging and tracing quality. The graph is now producing real traces, but several issues were found during the first review session (2026-05-30) that should be resolved before Phase 6 adds more nodes and more state.
+Focused pass on tracing quality before Phase 6 adds more nodes.
 
-**Issues found:**
+**Issues resolved:**
 
-1. **Token cost is always $0.00.** Every real CLI run shows `total_cost: 0.0` in Langfuse despite the `recommend` node making actual LLM calls. The `recommend` node sets up a `langfuse.callback.CallbackHandler` for token tracking, but it isn't connecting to the trace. Investigate whether the callback handler is being attached to the right LangChain invocation and whether the Langfuse/LangChain versions in use support this integration. Token cost visibility is important for understanding LLM spend as the graph grows.
+1. **Token cost always $0.00 → fixed.** Root causes: (a) `@observe` creates a SPAN by default; usage/cost fields are silently ignored on SPANs — only GENERATION observations track them. Fixed by adding `as_type="generation"` to the `recommend` decorator. (b) Token counts from the LangChain call were not being reported to Langfuse. Fixed by using `with_structured_output(..., include_raw=True)` to get the raw `AIMessage` back, reading `usage_metadata` from it, and reporting via `langfuse_context.update_current_observation(usage=ModelUsage(...))`. Also passes `model=model_name` so Langfuse can look up pricing.
 
-2. **Full stash serialized into every span input.** Each node receives the complete `GraphState` as its argument, so every `@observe` span captures the entire `normalized_stash` (36 items in fixture mode, potentially 1,300+ in live mode) in its input payload. This caused a 4-trace export to reach 8MB. At live stash scale, trace storage cost and export usability will be a real problem. Options to evaluate:
-   - Use `langfuse_context.update_current_observation(input=...)` inside each node to replace the auto-captured args with a trimmed summary (e.g., just candidate count, not the full list).
-   - Or pass only the fields each node actually needs rather than the full state dict — though this would require refactoring the node signatures.
-   - The filtered stash passed to `recommend` is already capped at 20 items, but the full stash is still present in the state at every prior node.
+2. **Full stash in every span → fixed.** Added `langfuse_context.update_current_observation(input=...)` at the top of every node to replace the auto-captured `GraphState` with a compact summary (user input + stash/candidate counts). The `normalized_stash` list (1,300+ items in live mode) no longer appears in any span.
 
-3. **Test traces were polluting Langfuse.** Once Langfuse credentials were added to `.env`, the `@observe` decorators on graph nodes fired during test runs, creating junk traces. Fixed by adding an `autouse` `disable_langfuse` fixture to `tests/conftest.py` that unsets the env vars for all tests. Verify this holds for `@pytest.mark.eval` integration tests as well — those make real LLM calls and should log to Langfuse, so the fixture may need a carve-out.
+3. **Test traces polluting Langfuse → fixed.** `autouse` `disable_langfuse` fixture in `tests/conftest.py` unsets Langfuse env vars for all tests. `@pytest.mark.eval` tests are also suppressed — they use a mock LLM in CI and the full eval is run via `skeinminder eval`, not pytest.
 
-4. **Export script fetches the most recent N traces without date filtering.** The `make export-traces` command currently fetches whatever the 10 most recent root traces are. Consider adding a `--since` flag (e.g., `--since 2026-05-30`) so exports can be scoped to a session without having to pull stale runs.
+4. **Model pricing not configured in self-hosted Langfuse.** Langfuse self-hosted has no pre-populated model pricing table; cost shows as `None` until models are registered. **Decision: add model registration to `setup_langfuse_dataset.py`.** This is the right pattern for both local dev and self-hosted production — run the script once after each fresh deployment. `langfuse Cloud` would handle this automatically, but we're targeting self-hosted. Haiku 4.5, Sonnet 4.6, and Opus 4.7 pricing is registered by the script. Update prices there when Anthropic changes rates.
 
-**Investigation tasks:**
-- Fix cost tracking in the `recommend` node; confirm token counts appear in Langfuse after a real run.
-- Decide on a trimming strategy for span inputs and implement it for `supervisor`, `project_first_filter`, and `stash_first_filter` (the nodes that see the full stash).
-- Review whether `@pytest.mark.eval` tests should log to Langfuse or also be suppressed.
-- Optionally add `--since` to the export script.
+5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
 ### Phase 7 — Human approval checkpoints
 

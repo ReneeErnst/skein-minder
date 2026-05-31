@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,6 +10,7 @@ from skeinminder.graph.nodes import (
     assess_filter_quality,
     format_output,
     low_confidence_output,
+    recommend,
 )
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.normalizer import (
@@ -65,6 +66,47 @@ def _canned_recommendations(stash_id: int = 1) -> list[Recommendation]:
         )
         for i in range(1, 4)
     ]
+
+
+# --- recommend ---
+
+
+def test_recommend_extracts_parsed_from_include_raw_response() -> None:
+    """recommend must unpack response['parsed'] from with_structured_output.
+
+    include_raw=True returns a dict, not the model directly.
+    """
+    canned = _canned_recommendations(stash_id=1)
+
+    mock_raw = MagicMock()
+    mock_raw.usage_metadata = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_tokens": 150,
+    }
+    mock_parsed = MagicMock()
+    mock_parsed.recommendations = canned
+
+    mock_structured = MagicMock()
+    mock_structured.invoke.return_value = {
+        "raw": mock_raw,
+        "parsed": mock_parsed,
+        "parsing_error": None,
+    }
+
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1)],
+        mode="project_first",
+        user_goal="I want a cardigan",
+    )
+
+    with patch("skeinminder.graph.nodes.ChatAnthropic", return_value=mock_llm):
+        result = recommend(state)
+
+    assert result["recommendations"] == canned
 
 
 # --- format_output ---
