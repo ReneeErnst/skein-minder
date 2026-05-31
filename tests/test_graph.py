@@ -304,6 +304,107 @@ def test_recommend_extracts_parsed_from_include_raw_response() -> None:
     assert result["recommendations"] == canned
 
 
+def test_recommend_includes_pattern_list_when_candidates_present() -> None:
+    """When pattern_candidates is non-empty, the prompt must include pattern data."""
+    canned = [
+        Recommendation(
+            title="Cozy Hat",
+            rationale="Good match.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+            pattern_id=101,
+            pattern_name="Free Hat",
+            pattern_url="https://www.ravelry.com/patterns/library/free-hat",
+        )
+    ]
+    mock_raw = MagicMock()
+    mock_raw.usage_metadata = {
+        "input_tokens": 50,
+        "output_tokens": 20,
+        "total_tokens": 70,
+    }
+    mock_parsed = MagicMock()
+    mock_parsed.recommendations = canned
+
+    mock_structured = MagicMock()
+    mock_structured.invoke.return_value = {
+        "raw": mock_raw,
+        "parsed": mock_parsed,
+        "parsing_error": None,
+    }
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+
+    candidates = [_make_pattern_summary(101, "free")]
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1)],
+        mode="project_first",
+        user_goal="I want a hat",
+        pattern_candidates=candidates,
+    )
+
+    captured_messages: list[Any] = []
+
+    def capture_invoke(msgs: list[Any]) -> dict[str, Any]:
+        captured_messages.extend(msgs)
+        return {"raw": mock_raw, "parsed": mock_parsed, "parsing_error": None}
+
+    mock_structured.invoke.side_effect = capture_invoke
+
+    with patch("skeinminder.graph.nodes.ChatAnthropic", return_value=mock_llm):
+        result = recommend(state)
+
+    assert result["recommendations"] == canned
+    human_content = captured_messages[-1].content
+    assert "Available patterns:" in human_content
+    assert "[P101]" in human_content
+
+
+def test_recommend_omits_pattern_list_when_no_candidates() -> None:
+    """When pattern_candidates is empty, the prompt must not include pattern data."""
+    canned = [
+        Recommendation(
+            title="Cozy Hat",
+            rationale="Good match.",
+            risks=["Swatch required"],
+            yarn_candidate_ids=[1],
+        )
+    ]
+    mock_raw = MagicMock()
+    mock_raw.usage_metadata = {
+        "input_tokens": 50,
+        "output_tokens": 20,
+        "total_tokens": 70,
+    }
+    mock_parsed = MagicMock()
+    mock_parsed.recommendations = canned
+
+    mock_structured = MagicMock()
+    captured_messages: list[Any] = []
+
+    def capture_invoke(msgs: list[Any]) -> dict[str, Any]:
+        captured_messages.extend(msgs)
+        return {"raw": mock_raw, "parsed": mock_parsed, "parsing_error": None}
+
+    mock_structured.invoke.side_effect = capture_invoke
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1)],
+        mode="project_first",
+        user_goal="I want a hat",
+        pattern_candidates=[],
+    )
+
+    with patch("skeinminder.graph.nodes.ChatAnthropic", return_value=mock_llm):
+        result = recommend(state)
+
+    assert result["recommendations"] == canned
+    human_content = captured_messages[-1].content
+    assert "Available patterns:" not in human_content
+
+
 # --- format_output ---
 
 

@@ -418,6 +418,13 @@ _SYSTEM_PROMPT = (
     "Return as many recommendations as are genuinely feasible, up to 3."
 )
 
+_PATTERN_RULE = (
+    "5. When patterns are provided, pair each recommendation with the "
+    "highest-priority pattern (library > free > popular) whose yardage range "
+    "the available yarn can meet. If no pattern fits the yarn, omit the pattern "
+    "fields rather than forcing a mismatch."
+)
+
 
 def _format_stash_for_prompt(items: list[StashItem]) -> str:
     """Format filtered stash items as a numbered list for the LLM prompt."""
@@ -449,21 +456,40 @@ def recommend(state: GraphState) -> dict[str, Any]:
     client: ChatAnthropic = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
 
     stash_summary = _format_stash_for_prompt(state["filtered_stash"])
+    pattern_candidates = state.get("pattern_candidates") or []
 
-    if state["mode"] == "project_first":
-        human_text = f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+    if pattern_candidates:
+        system_text = _SYSTEM_PROMPT + "\n" + _PATTERN_RULE
+        pattern_list = _format_patterns_for_prompt(pattern_candidates)
+        if state["mode"] == "project_first":
+            human_text = (
+                f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+                f"\n\nAvailable patterns:\n{pattern_list}"
+            )
+        else:
+            human_text = (
+                f"Yarn in stash:\n{stash_summary}\n\n"
+                "What projects would work well with this yarn?"
+                f"\n\nAvailable patterns:\n{pattern_list}"
+            )
     else:
-        human_text = (
-            f"Yarn in stash:\n{stash_summary}\n\n"
-            "What projects would work well with this yarn?"
-        )
+        system_text = _SYSTEM_PROMPT
+        if state["mode"] == "project_first":
+            human_text = (
+                f"Goal: {state['user_goal']}\n\nAvailable yarn:\n{stash_summary}"
+            )
+        else:
+            human_text = (
+                f"Yarn in stash:\n{stash_summary}\n\n"
+                "What projects would work well with this yarn?"
+            )
 
     messages = [
         SystemMessage(
             content=[
                 {
                     "type": "text",
-                    "text": _SYSTEM_PROMPT,
+                    "text": system_text,
                     "cache_control": {"type": "ephemeral"},
                 }
             ]
