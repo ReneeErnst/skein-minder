@@ -1,0 +1,14 @@
+{
+  "patterns": [
+    {"id": 1001, "name": "Simple Stockinette Hat", "permalink": "simple-stockinette-hat", "free": true},
+    {"id": 1002, "name": "Lace Shawlette", "permalink": "lace-shawlette", "free": true},
+    {"id": 1003, "name": "Cabled Mittens", "permalink": "cabled-mittens", "free": true},
+    {"id": 1004, "name": "Ribbed Socks", "permalink": "ribbed-socks", "free": true}
+  ],
+  "paginator": {
+    "page": 1,
+    "page_size": 20,
+    "results": 4,
+    "page_count": 1
+  }
+}
