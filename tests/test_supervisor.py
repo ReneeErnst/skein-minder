@@ -72,3 +72,23 @@ def test_supervisor_stash_first_no_weight_sets_weight_none() -> None:
     result = supervisor(_make_state("Use my yarn stash for something fun"))
     assert result["stash_filter"] is not None
     assert result["stash_filter"].weight is None
+
+
+@pytest.mark.parametrize(
+    "user_input,expected_oldest_first",
+    [
+        pytest.param("use my oldest fingering weight", True, id="oldest"),
+        pytest.param("I have yarn I've had the longest", True, id="longest"),
+        pytest.param("use up yarn that's been sitting around", True, id="been_sitting"),
+        pytest.param(
+            "use my yarn I first acquired years ago", True, id="first_acquired"
+        ),
+        pytest.param("Help me use up my worsted wool", False, id="no_temporal"),
+    ],
+)
+def test_supervisor_stash_first_temporal_oldest_first(
+    user_input: str, expected_oldest_first: bool
+) -> None:
+    result = supervisor(_make_state(user_input))
+    assert result["stash_filter"] is not None
+    assert result["stash_filter"].oldest_first is expected_oldest_first

@@ -31,6 +31,8 @@ from skeinminder.ravelry.patterns import PatternSummary, RawPattern, normalize_p
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
+_TEMPORAL_TRIGGERS = frozenset({"oldest", "longest", "been sitting", "first acquired"})
+
 _SWEATER_GARMENTS: list[str] = [
     "cardigan",
     "pullover",
@@ -122,6 +124,7 @@ def supervisor(state: GraphState) -> dict[str, Any]:
         stash_filter = StashFilter(
             weight=find_weight_in_text(text),
             min_yards=_extract_yards(text),
+            oldest_first=any(t in text for t in _TEMPORAL_TRIGGERS),
         )
         langfuse_context.update_current_observation(metadata={"mode": mode})
         return {"mode": mode, "user_goal": None, "stash_filter": stash_filter}
