@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel
@@ -152,10 +153,26 @@ class StashItem(BaseModel):
     notes: str | None
     project_quantity: ProjectQuantity
     is_weaving_yarn: bool = False
+    added_date: datetime | None = None
 
 
 from skeinminder.ravelry.exceptions import NormalizationError  # noqa: E402
 from skeinminder.ravelry.models import RawPack, RawStashItem  # noqa: E402
+
+
+def _parse_ravelry_date(s: str | None) -> datetime | None:
+    """Parse a Ravelry stash date string into a timezone-aware datetime.
+
+    Format: "YYYY/MM/DD HH:MM:SS ±HH:MM". Returns None for None input or
+    any string that does not match the expected format.
+    """
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y/%m/%d %H:%M:%S %z")
+    except ValueError:
+        logger.debug("could not parse stash date %r", s)
+        return None
 
 
 def _primary_pack_skeins(packs: list[RawPack]) -> float | None:
@@ -217,6 +234,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
         notes=raw.notes,
         project_quantity=project_quantity_from_yards(yards_total, weight_category),
         is_weaving_yarn=is_weaving_yarn(yarn_name_str),
+        added_date=_parse_ravelry_date(raw.created_at),
     )
 
 
