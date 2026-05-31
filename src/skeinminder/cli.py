@@ -108,6 +108,9 @@ def _run_recommend(goal: str, stash: list[StashItem]) -> str:
             "formatted_output": None,
             "filter_confidence": "",
             "force_recommend": False,
+            "ravelry_username": "",
+            "use_fixture": False,
+            "pattern_candidates": [],
         }
     )
     output: str = result.get("formatted_output") or "No recommendations generated."

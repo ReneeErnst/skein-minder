@@ -183,6 +183,9 @@ def run_example(example: EvalExample) -> GraphState:
             "formatted_output": None,
             "filter_confidence": "",
             "force_recommend": False,
+            "ravelry_username": "",
+            "use_fixture": False,
+            "pattern_candidates": [],
         }
     )
     return cast(GraphState, result)
