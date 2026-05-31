@@ -10,6 +10,7 @@ import pytest
 from skeinminder.ravelry.client import RavelryClient
 from skeinminder.ravelry.exceptions import RavelryAPIError
 from skeinminder.ravelry.patterns import (
+    RawFirstPhoto,
     RawPattern,
     RawPatternFull,
     RawPatternYarnWeight,
@@ -160,6 +161,36 @@ def test_get_pattern_details_skips_invalid_entry(fixture_client: RavelryClient) 
         result = fixture_client.get_pattern_details([1001])
     assert 1001 in result
     assert result[1001].name == "Good Pattern"
+
+
+def test_normalize_pattern_populates_photo_url() -> None:
+    raw = RawPatternFull(
+        id=9,
+        name="Photo Pattern",
+        permalink="photo-pattern",
+        free=True,
+        yardage=500,
+        yardage_max=700,
+        yarn_weight=RawPatternYarnWeight(id=10, name="DK"),
+        first_photo=RawFirstPhoto(medium_url="https://example.com/photo.jpg"),
+    )
+    summary = normalize_pattern(raw, library_ids=set())
+    assert summary.photo_url == "https://example.com/photo.jpg"
+
+
+def test_normalize_pattern_photo_url_none_when_absent() -> None:
+    raw = RawPatternFull(
+        id=10,
+        name="No Photo",
+        permalink="no-photo",
+        free=False,
+        yardage=800,
+        yardage_max=1200,
+        yarn_weight=None,
+        first_photo=None,
+    )
+    summary = normalize_pattern(raw, library_ids=set())
+    assert summary.photo_url is None
 
 
 def test_search_patterns_skips_invalid_entry(fixture_client: RavelryClient) -> None:

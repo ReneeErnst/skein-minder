@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkeinMinder</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+</head>
+<body class="phase-input">
+
+  <header>
+    <h1>SkeinMinder</h1>
+    <a href="#" id="load-last-run" class="load-last-run">Load last run</a>
+  </header>
+
+  <section id="phase-input">
+    <div class="card input-card">
+      <h2>What would you like to make?</h2>
+      <textarea id="goal-input" placeholder="What would you like to make?" rows="3"></textarea>
+      <button id="submit-btn" type="button">Find projects →</button>
+    </div>
+  </section>
+
+  <section id="phase-running">
+    <div id="graph-container"></div>
+    <p id="status-text" class="status-text"></p>
+  </section>
+
+  <section id="phase-results">
+    <div id="cards-container" class="cards-container"></div>
+    <button id="run-again-btn" type="button">Run again</button>
+  </section>
+
+  <div id="approval-modal" class="modal hidden">
+    <div class="modal-content">
+      <p id="approval-message"></p>
+      <button id="approve-btn" type="button">Continue anyway</button>
+      <button id="cancel-btn" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <script src="/graph.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

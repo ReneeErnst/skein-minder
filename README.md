@@ -55,17 +55,22 @@ flowchart TD
         PatternData["Pattern Data Layer\nPatternSummary · RavelryClient pattern methods"]
     end
 
-    subgraph inprogress ["🔄 Phase 6b — in PR"]
+    subgraph built4 ["✅ Phase 6b — built"]
         PatternSearch["pattern_search node\nyarn+pattern pairs · real Ravelry URLs"]
     end
 
-    subgraph future ["📋 Phases 7–8 — planned"]
+    subgraph built5 ["✅ Phase 7 — built"]
+        WebUI["Web UI\nFastAPI · SSE · vis-network · Ravelry-inspired styling"]
+    end
+
+    subgraph future ["📋 Phases 9–10 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
 
     Stash --> Norm --> Graph --> Obs --> Eval
-    Eval --> PatternData --> PatternSearch --> Gate -->|"✅ approved"| Writer
+    Eval --> PatternData --> PatternSearch --> WebUI
+    WebUI --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 
 ```
@@ -76,6 +81,7 @@ flowchart TD
 
 - Python 3.13 · uv · Pydantic v2
 - LangGraph (stateful multi-agent orchestration)
+- FastAPI + uvicorn · SSE · vis-network (web UI)
 - httpx · tenacity (Ravelry API client, retry on 429/5xx)
 - Claude via `langchain-anthropic` (with prompt caching)
 - Langfuse (graph tracing · self-hosted via Docker Compose)
@@ -94,9 +100,11 @@ flowchart TD
 | 4 | Tracing and observability (Langfuse) | ✅ Complete |
 | 5 | Eval suite (deterministic assertions + LLM-as-judge) | ✅ Complete |
 | 6a | Pattern data layer (client methods, PatternSummary, fixtures) | ✅ Complete |
-| 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | 🔄 In PR |
-| 7 | Human approval checkpoints | 📋 Planned |
-| 8 | Ravelry project write-back | 📋 Planned |
+| 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
+| 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
+| 8 | Performance and cleanup (parallel pattern search, async pagination, streaming) | 📋 Planned |
+| 9 | Human approval checkpoints | 📋 Planned |
+| 10 | Ravelry project write-back | 📋 Planned |
 
 ---
 
@@ -111,6 +119,9 @@ uv sync
 # Try it without Ravelry credentials (uses committed fixture data)
 skeinminder stash --fixture
 skeinminder recommend "I want to make a fall cardigan" --fixture
+
+# Web UI (browser at http://localhost:8000 — also works without credentials)
+skeinminder web --fixture
 
 # Live mode: copy .env.example → .env and add your credentials
 skeinminder stash

@@ -208,7 +208,74 @@ tests/
 - Accessory-quantity yarn passes through for sweater goals.
 - LLM forces 3 recommendations even when stash cannot support them.
 
-### Phases 3b–5 — COMPLETE (merged to main)
+### Phases 3b–6b — COMPLETE (merged to main)
+
+### Phase 7 — Web UI ✅ COMPLETE (PR #11)
+
+Browser-based UI that wraps the existing LangGraph pipeline. The graph runs
+server-side; the frontend streams progress via SSE and renders recommendation
+cards when done.
+
+**Files built:**
+
+```
+src/skeinminder/web/
+  __init__.py
+  events.py      # stream_graph_events() — astream_events → SSE bridge
+                 #   _build_result_payload() enriches recommendations with photo_url
+                 #   saves last_run.json after each run
+  server.py      # create_app() FastAPI factory
+                 #   POST /recommend → stream_id (non-blocking)
+                 #   GET /stream/{id} → SSE
+                 #   GET /replay → last_run.json fallback
+                 #   POST /approve/{id}, POST /cancel/{id} → Phase 9 stubs
+  static/
+    index.html   # three-phase structure (phase-input / phase-running / phase-results)
+    app.js       # SSE consumer, phase controller, card renderer, Load last run
+    graph.js     # vis-network 8-node topology; setNodeState(name, state)
+    style.css    # cream/burgundy/green palette, staggered card animation
+src/skeinminder/ravelry/patterns.py
+                 # + RawFirstPhoto model; PatternSummary gains photo_url field
+src/skeinminder/cli.py
+                 # + skeinminder web [--port PORT] [--fixture]
+tests/
+  test_web_events.py   # 9 tests: _sse, _build_result_payload, stream_graph_events
+  test_web_server.py   # 6 endpoint tests via FastAPI TestClient
+```
+
+**Architecture decisions:**
+
+- `create_app()` factory loads stash once at startup; each `/recommend` creates
+  an `asyncio.Queue` and fires a background task via `asyncio.create_task`.
+- `stream_graph_events()` is an async generator that wraps LangGraph's
+  `astream_events(version="v2")` — filtering to known node names only.
+- `_build_result_payload()` joins each `Recommendation` with its matching
+  `PatternSummary` (by `pattern_id`) to attach `photo_url` for card images.
+- The LangGraph mock in streaming tests uses actual `Recommendation` objects
+  (not plain dicts), which is what LangGraph returns in Python `astream_events`.
+- mypy `disable_error_code = ["untyped-decorator"]` applied to `web.server`
+  module — FastAPI decorators are untyped in strict mode.
+
+**194 tests passing, CI clean.**
+
+---
+
+### Phase 7b — Stash date filtering
+
+Goal: surface when a stash item was added so the graph can correctly answer temporal queries like "use up my oldest fingering weight" or "what have I had sitting around the longest."
+
+Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), but `RawStashItem` drops it today via `extra="ignore"`.
+
+All changes are additive — existing behavior is unchanged when `oldest_first=False` (the default).
+
+Tasks:
+- Add `created_at: str | None = None` to `RawStashItem`.
+- Add `added_date: datetime | None = None` to `StashItem`; parse the Ravelry date string in `normalize_stash_item`.
+- Add `oldest_first: bool = False` to `StashFilter`.
+- Extend supervisor keyword detection for temporal phrases ("oldest", "longest", "been sitting", "first acquired"); set `oldest_first=True` on the resulting `StashFilter`.
+- Update `stash_first_filter` to sort ascending by `added_date` when `oldest_first=True`, with `None` dates last. Apply the same logic to `project_first_filter` for symmetry.
+- Refresh committed fixture files to include representative `created_at` values — re-run the recorder, or add plausible dates manually to the existing 39-item fixture. (Note: `stash_list_full.json` also lacks `created_at` since it was built via `model_dump()` before the field was added; re-recording is the cleanest path.)
+- Add tests: supervisor temporal keyword detection, filter sort-by-age, normalizer `added_date` parsing including timezone-aware strings and `None` input.
 
 ---
 
@@ -263,6 +330,8 @@ The raw capture (pre-Pydantic) revealed the following about the detail format vs
 - `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
 - `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
 - `long_yarn_weight_name` (detail only) — human-readable weight label
+- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 7b.
+- `updated_at` (both list and detail) — date the item was last edited; same format. Lower priority than `created_at`.
 
 ## API discrepancies (to report to Ravelry)
 
@@ -366,7 +435,7 @@ Next actions:
 
 The CLI is the right demo vehicle for a technical portfolio project. The natural end state for a fiber arts audience is a web chat UI: a simple input box where the user types a goal or describes their yarn, and recommendation cards come back with rationale and risks. Most knitters already think in chat terms from Ravelry's community features.
 
-The path from CLI to web is a thin layer once the graph exists: a FastAPI endpoint wraps the graph, a simple React front end handles input and card rendering. The LangGraph backend doesn't change.
+The path from CLI to web is a thin layer once the graph exists: a FastAPI endpoint wraps the graph with SSE streaming, and a vanilla JS front end handles the three-phase UI (input → live graph animation → recommendation cards). No JS framework or build step required. The LangGraph backend doesn't change.
 
 **Observability note for FastAPI:** When the graph moves to a web service, Langfuse trace IDs must be correlated to HTTP request IDs. Set the trace ID to the request ID (e.g., from a `X-Request-ID` header) via `langfuse_context.update_current_trace(id=request_id)` inside the `@observe`-decorated endpoint handler. This makes traces directly linkable from logs. The CLI implementation in Phase 4 does not require this — it is a FastAPI-specific concern.
 
@@ -568,7 +637,7 @@ Key decisions:
 
 Spec: `docs/superpowers/specs/YYYY-MM-DD-phase5-evaluation.md` (to be written)
 
-### Phase 6 — Pattern integration 🔄 IN PROGRESS
+### Phase 6 — Pattern integration ✅ COMPLETE
 
 Goal: connect recommendations to real Ravelry patterns. Output is yarn+pattern pairs, not abstract project ideas.
 
@@ -595,7 +664,7 @@ Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`
 - `RavelryClient.search_patterns(weight, query, availability, sort, page_size)` — always passes `craft=knitting`; returns empty list on failure.
 - `RavelryClient.get_pattern_details(pattern_ids)` — batch call to `/patterns.json`; returns partial map on parse failures.
 
-**Phase 6b — Pattern graph integration 🔄 IN PR (#10, branch: phase6b)**
+**Phase 6b — Pattern graph integration ✅ COMPLETE (merged to main)**
 
 - `Recommendation` model gains nullable `pattern_id`, `pattern_name`, `pattern_url`.
 - `GraphState` gains `ravelry_username`, `use_fixture`, `pattern_candidates`.
@@ -607,6 +676,32 @@ Key API endpoints (documented in `docs/ravelry-api/api-reference-skeinminder.md`
 - 176 tests passing. Graph routing: `assess_filter_quality` high → `pattern_search` → `recommend`; `low_confidence_output` confirm → `pattern_search` → `recommend`.
 
 Future hook (not yet in scope): when `low_confidence_output` fires, offer to search for yarn to purchase that would satisfy the goal.
+
+### Phase 7 — Web UI (demo + daily use)
+
+Goal: replace the plain CLI output with a browser-based UI that is compelling for live demos to mixed technical/craft audiences and enjoyable for daily use. The graph, business logic, and all existing tests remain unchanged.
+
+Stack: FastAPI + SSE (backend), vanilla JS + CSS (no build step), vis-network (graph animation). Visual design is Ravelry-inspired: warm cream background, deep burgundy accents, sage green for success states.
+
+Broken into three subphases:
+
+**Phase UI-a — Backend + CLI command:** FastAPI app, SSE streaming endpoint, LangGraph → SSE event bridge, `skeinminder web [--port 8000] [--fixture]` CLI command, `/replay` endpoint + `last_run.json` auto-save.
+
+**Phase UI-b — Frontend structure + graph animation:** Three-phase page (input → running → results), vis-network node animation driven by SSE events, status text per node in plain English. UI-a and UI-b can run as parallel subagents — the SSE event schema is the shared contract.
+
+**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 9 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 9).
+
+**SSE event schema (the UI-a/UI-b contract):**
+```
+node_start / node_complete — drives graph animation
+node_awaiting_approval     — Phase 9 seam (defined now, emitted in Phase 9)
+result                     — full recommendation payload, auto-saved
+error                      — renders error state
+```
+
+**Fallback layers:** `--fixture` flag disables live API calls; "Load last run" link serves `last_run.json` from the previous successful run; `/replay` endpoint accessible from any HTTP client.
+
+Spec: `docs/superpowers/specs/2026-05-31-web-ui-design.md`
 
 ### Phase 5b — Observability improvements ✅ COMPLETE (merged in PR #9)
 
@@ -624,9 +719,9 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
-### Post-Phase-6 improvement backlog
+### Phase 8 — Performance and cleanup backlog
 
-_Identified during design review on 2026-05-31. These are not blocking Phase 6 graph integration, but should be addressed before Phase 7 adds more complexity._
+_Identified during design review on 2026-05-31. These are not blocking Phase 7 Web UI but should land before Phase 9 adds human-in-the-loop complexity. Can run in parallel with Phase 7._
 
 **1. Parallel pattern search and stash filtering (LangGraph fan-out)**
 
@@ -655,28 +750,31 @@ The `recommend` node blocks for 2–5 seconds before the user sees anything. The
 
 **5. `click.confirm` → LangGraph `interrupt()`**
 
-`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 7 anyway; doing it here cleans up the code before more complexity lands.
+`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 9 anyway; doing it here cleans up the code before more complexity lands.
 
 **6. Supervisor robustness**
 
-The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 7 if not blocking demo.
+The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 9 if not blocking demo.
 
 ---
 
-### Phase 7 — Human approval checkpoints
+### Phase 9 — Human approval checkpoints
 
 Goal: demonstrate safe agentic control before any write operations.
 
 Tasks:
-- Add LangGraph interrupt/checkpoint before writes.
+- Replace `click.confirm()` in `low_confidence_output` with LangGraph `interrupt()`.
+- Add interrupt/checkpoint before any write operations.
 - Show draft payload before side effects.
 - Require explicit approval to continue.
 - Store graph thread state.
 - Add rejection/edit path.
 
+**Web UI integration:** Phase UI-c builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 9 wires the real `interrupt()` call — no frontend changes needed beyond what Phase UI-c already delivers.
+
 Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
 
-### Phase 8 — Ravelry project write-back
+### Phase 10 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
@@ -690,15 +788,15 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 9 — External productivity integration (tentative)
+### Phase 11 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
-Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 8 before committing to Phase 9.
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 10 before committing to Phase 11.
 
-### Phase 10 — Demo polish
+### Phase 12 — Documentation polish
 
-Deterministic demo data, fixture mode toggle, sample prompt scripts, screenshots/GIFs, architecture diagram, known-limitations section.
+The demo UI itself (fixture mode, fallback, animated graph, result cards) is delivered by Phase UI. This phase covers remaining documentation artifacts: screenshots/GIFs for the README, an architecture diagram, sample prompt scripts, and a known-limitations section.
 
 ---
 
