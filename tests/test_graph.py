@@ -468,6 +468,21 @@ def test_format_output_omits_pattern_line_when_fields_absent() -> None:
     assert "Abstract Cardigan" in output
 
 
+def test_format_output_deduplicates_yarn_names() -> None:
+    items = [_make_item(stash_id=i) for i in range(1, 7)]
+    recs = [
+        Recommendation(
+            title="Big Cardigan",
+            rationale="Enough yarn for a sweater.",
+            risks=[],
+            yarn_candidate_ids=[1, 2, 3, 4, 5, 6],
+        )
+    ]
+    result = format_output(_make_state(filtered_stash=items, recommendations=recs))
+    output = result["formatted_output"]
+    assert output.count("Test Brand Test Yarn") == 1
+
+
 def test_format_stash_for_prompt_groups_same_yarn_colorway() -> None:
     items = [
         StashItem(

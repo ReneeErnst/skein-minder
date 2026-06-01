@@ -625,13 +625,14 @@ def format_output(state: GraphState) -> dict[str, Any]:
             for risk in rec.risks:
                 lines.append(f"     • {risk}")
         if rec.yarn_candidate_ids:
-            yarn_names: list[str] = []
+            seen: set[tuple[str, str]] = set()
             for sid in rec.yarn_candidate_ids:
                 item = stash_by_id.get(sid)
                 if item:
-                    yarn_names.append(f"{item.brand} {item.yarn_name}")
-            if yarn_names:
-                lines.append(f"   Yarn: {', '.join(yarn_names)}")
+                    seen.add((item.brand, item.yarn_name))
+            if seen:
+                name_strs = [f"{b} {n}" for b, n in sorted(seen)]
+                lines.append(f"   Yarn: {', '.join(name_strs)}")
         if rec.pattern_name and rec.pattern_url:
             lines.append(f"   Pattern: {rec.pattern_name} — {rec.pattern_url}")
 
