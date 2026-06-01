@@ -35,14 +35,48 @@ _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
 _TEMPORAL_TRIGGERS = frozenset({"oldest", "longest", "been sitting", "first acquired"})
 
-_SWEATER_GARMENTS: list[str] = [
-    "cardigan",
-    "pullover",
-    "sweater",
-    "jumper",
-    "vest",
-    "coat",
-]
+_GARMENT_TO_PC: dict[str, str] = {
+    "cardigan": "cardigan",
+    "pullover": "pullover",
+    "jumper": "pullover",
+    "sweater": "sweater",
+    "vest": "vest",
+    "coat": "coat",
+    "jacket": "coat",
+    "shrug": "shrug",
+    "bolero": "shrug",
+    "hat": "hat",
+    "beanie": "hat",
+    "toque": "hat",
+    "beret": "beret-tam",
+    "tam": "beret-tam",
+    "scarf": "scarf",
+    "cowl": "cowl",
+    "shawl": "shawl-wrap",
+    "wrap": "shawl-wrap",
+    "poncho": "poncho",
+    "cape": "cape",
+    "mittens": "mittens",
+    "gloves": "gloves",
+    "fingerless": "fingerless",
+    "socks": "socks",
+    "sock": "socks",
+    "slippers": "slippers",
+    "legwarmers": "legwarmers",
+    "headband": "headband",
+    "earwarmers": "earwarmers",
+    "blanket": "blanket",
+    "throw": "blanket",
+    "bag": "bag",
+    "tote": "tote",
+    "dress": "dress",
+    "skirt": "skirt",
+    "top": "tops",
+}
+
+_SWEATER_SCALE_GARMENTS: frozenset[str] = frozenset(
+    {"cardigan", "pullover", "sweater", "vest", "coat", "shrug"}
+)
 
 _TIER_ORDER: dict[str, int] = {"library": 0, "free": 1, "popular": 2}
 
@@ -111,14 +145,16 @@ def _extract_yards(text: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
-def _extract_garment_type(goal: str) -> str | None:
-    """Return the first garment keyword from _SWEATER_GARMENTS found in goal, or None.
+def _extract_garment_pc(goal: str) -> str | None:
+    """Return the Ravelry category permalink for the first garment keyword in goal.
 
-    Returns None if no garment keyword is present.
+    Scans goal for any key in _GARMENT_TO_PC using word-boundary matching and
+    returns the corresponding permalink (e.g. "jumper" → "pullover"). Returns
+    None if no garment keyword is present.
     """
-    for garment in _SWEATER_GARMENTS:
-        if re.search(r"\b" + garment + r"\b", goal) is not None:
-            return garment
+    for keyword, permalink in _GARMENT_TO_PC.items():
+        if re.search(r"\b" + keyword + r"\b", goal) is not None:
+            return permalink
     return None
 
 
@@ -175,7 +211,7 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     stash = state["normalized_stash"]
     goal = (state["user_goal"] or "").lower()
     weight = find_weight_in_text(goal)
-    garment_type = _extract_garment_type(goal)
+    garment_pc = _extract_garment_pc(goal)
 
     # First pass: per-item filters (weaving, weight, fiber).
     partially_filtered: list[StashItem] = []
@@ -185,17 +221,17 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
         if weight is not None and weight_match(item, weight) == MatchScore.MISMATCH:
             continue
         if (
-            garment_type is not None
-            and fiber_suitability(item, garment_type) == MatchScore.MISMATCH
+            garment_pc is not None
+            and fiber_suitability(item, garment_pc) == MatchScore.MISMATCH
         ):
             continue
         partially_filtered.append(item)
 
-    # Second pass: group-total sweater threshold.
+    # Second pass: group-total sweater threshold (sweater-scale garments only).
     group_yards = _group_yards(partially_filtered)
     filtered: list[StashItem] = []
     for item in partially_filtered:
-        if garment_type is not None:
+        if garment_pc is not None and garment_pc in _SWEATER_SCALE_GARMENTS:
             group_total = group_yards[(item.yarn_id, item.colorway)]
             if group_total < SWEATER_YARDS_BY_WEIGHT[item.weight_category]:
                 continue
@@ -295,7 +331,8 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
         return {"filter_confidence": "low"}
     total_yards = sum(i.yards_total for i in filtered)
     goal = (state["user_goal"] or "").lower()
-    is_sweater_goal = _extract_garment_type(goal) is not None
+    garment_pc = _extract_garment_pc(goal)
+    is_sweater_goal = garment_pc is not None and garment_pc in _SWEATER_SCALE_GARMENTS
     if is_sweater_goal and total_yards < 500:
         langfuse_context.update_current_observation(
             metadata={"filter_confidence": "low"}
@@ -331,7 +368,7 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
 
     best_item = max(filtered, key=lambda i: i.yards_total)
     weight = best_item.weight_category.value
-    goal_query = _extract_garment_type((state.get("user_goal") or "").lower())
+    goal_query = _extract_garment_pc((state.get("user_goal") or "").lower())
     username = state["ravelry_username"]
 
     if state["use_fixture"]:

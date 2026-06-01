@@ -7,6 +7,7 @@ import pytest
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
+    _extract_garment_pc,
     _format_stash_for_prompt,
     assess_filter_quality,
     format_output,
@@ -28,14 +29,19 @@ from skeinminder.ravelry.patterns import (
 )
 
 
-def _make_item(*, stash_id: int = 1, yards_total: float = 1000.0) -> StashItem:
+def _make_item(
+    *,
+    stash_id: int = 1,
+    yards_total: float = 1000.0,
+    weight_category: WeightCategory = WeightCategory.WORSTED,
+) -> StashItem:
     return StashItem(
         stash_id=stash_id,
         yarn_id=100,
         brand="Test Brand",
         yarn_name="Test Yarn",
         colorway="Mossy Green",
-        weight_category=WeightCategory.WORSTED,
+        weight_category=weight_category,
         fiber=["Wool"],
         color_family="Greens",
         skeins=5.0,
@@ -120,6 +126,25 @@ def _make_client_mock(
     mock.search_patterns.side_effect = [free_patterns, popular_patterns]
     mock.get_pattern_details.return_value = detail_map
     return mock
+
+
+# --- _extract_garment_pc ---
+
+EXTRACT_GARMENT_PC_SCENARIOS = [
+    pytest.param("I want a cardigan", "cardigan", id="cardigan_direct"),
+    pytest.param("I want a pullover", "pullover", id="pullover_direct"),
+    pytest.param("I want a jumper", "pullover", id="jumper_synonym"),
+    pytest.param("I want a hat", "hat", id="hat"),
+    pytest.param("I want some socks", "socks", id="socks"),
+    pytest.param("I want a shawl", "shawl-wrap", id="shawl_synonym"),
+    pytest.param("something cozy", None, id="no_match"),
+    pytest.param("a gift", None, id="no_match_gift"),
+]
+
+
+@pytest.mark.parametrize("goal,expected_pc", EXTRACT_GARMENT_PC_SCENARIOS)
+def test_extract_garment_pc(goal: str, expected_pc: str | None) -> None:
+    assert _extract_garment_pc(goal) == expected_pc
 
 
 # --- pattern_search node ---
