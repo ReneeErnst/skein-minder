@@ -93,7 +93,7 @@ PROJECT_FIRST_SWEATER_SCENARIOS: list[Any] = [
             "expected_in": [1],
             "expected_out": [2, 3],
         },
-        id="low_yardage_excluded",
+        id="low_yardage",
     ),
     pytest.param(
         {
@@ -107,7 +107,7 @@ PROJECT_FIRST_SWEATER_SCENARIOS: list[Any] = [
             "expected_in": [1, 2, 3, 4, 5, 6],
             "expected_out": [],
         },
-        id="group_passes_sweater_threshold",
+        id="group_passes",
     ),
     pytest.param(
         {
@@ -135,7 +135,7 @@ PROJECT_FIRST_SWEATER_SCENARIOS: list[Any] = [
             "expected_in": [],
             "expected_out": [1, 2, 3, 4, 5, 6],
         },
-        id="different_colorways_independent",
+        id="split_colorways",
     ),
 ]
 
