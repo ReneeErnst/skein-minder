@@ -136,3 +136,22 @@ def test_enrich_skips_yarn_fiber_with_null_fiber_category() -> None:
     result = enrich_stash_with_fiber([item], client)
     assert result[0].yarn is not None
     assert result[0].yarn.fiber_categories == []
+
+
+def test_enrich_batches_multiple_distinct_yarn_ids_in_one_call() -> None:
+    item_a = _make_stash_item(10)
+    item_b = _make_stash_item(20)
+
+    client = FakeClient(
+        {
+            10: _make_yarn_detail(10, ["Wool"]),
+            20: _make_yarn_detail(20, ["Cotton"]),
+        }
+    )
+    enrich_stash_with_fiber([item_a, item_b], client)
+
+    assert sorted(client.called_with) == [10, 20]
+    assert item_a.yarn is not None
+    assert item_b.yarn is not None
+    assert item_a.yarn.fiber_categories[0].name == "Wool"
+    assert item_b.yarn.fiber_categories[0].name == "Cotton"

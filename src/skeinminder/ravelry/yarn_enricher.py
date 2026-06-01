@@ -27,7 +27,7 @@ def enrich_stash_with_fiber(
     Items with yarn=None or already-populated fiber_categories are skipped.
     Returns the same list (mutated in place) for convenience.
     """
-    yarn_ids = list(
+    yarn_ids = sorted(
         {
             item.yarn.id
             for item in items
