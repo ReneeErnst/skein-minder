@@ -23,7 +23,8 @@
         "yardage": 186.0,
         "fiber_categories": []
       },
-      "color_family_name": "Blue-green"
+      "color_family_name": "Blue-green",
+      "created_at": "2016/08/12 10:00:00 +00:00"
     },
     {
       "id": 16204945,
@@ -48,7 +49,8 @@
         "yardage": 193.0,
         "fiber_categories": []
       },
-      "color_family_name": "Blue-purple"
+      "color_family_name": "Blue-purple",
+      "created_at": "2017/03/22 14:30:00 +00:00"
     },
     {
       "id": 25243678,
@@ -73,7 +75,8 @@
         "yardage": 150.0,
         "fiber_categories": []
       },
-      "color_family_name": "White"
+      "color_family_name": "White",
+      "created_at": "2018/11/05 09:15:00 +00:00"
     },
     {
       "id": 20810431,
@@ -98,7 +101,8 @@
         "yardage": 110.0,
         "fiber_categories": []
       },
-      "color_family_name": "Red"
+      "color_family_name": "Red",
+      "created_at": "2019/06/30 08:00:00 +00:00"
     },
     {
       "id": 20810367,
@@ -123,7 +127,8 @@
         "yardage": 110.0,
         "fiber_categories": []
       },
-      "color_family_name": "Gray"
+      "color_family_name": "Gray",
+      "created_at": "2020/01/15 16:45:00 +00:00"
     },
     {
       "id": 18640965,
@@ -148,7 +153,8 @@
         "yardage": 109.0,
         "fiber_categories": []
       },
-      "color_family_name": "Red"
+      "color_family_name": "Red",
+      "created_at": "2021/09/03 11:20:00 +00:00"
     },
     {
       "id": 29207344,
@@ -173,7 +179,8 @@
         "yardage": 1680.0,
         "fiber_categories": []
       },
-      "color_family_name": "Green"
+      "color_family_name": "Green",
+      "created_at": "2022/04/18 13:00:00 +00:00"
     },
     {
       "id": 29207349,
@@ -198,7 +205,8 @@
         "yardage": 1680.0,
         "fiber_categories": []
       },
-      "color_family_name": "Orange"
+      "color_family_name": "Orange",
+      "created_at": "2023/07/27 10:30:00 +00:00"
     },
     {
       "id": 30400427,
@@ -223,7 +231,8 @@
         "yardage": 1680.0,
         "fiber_categories": []
       },
-      "color_family_name": "Green"
+      "color_family_name": "Green",
+      "created_at": "2024/02/14 09:00:00 +00:00"
     },
     {
       "id": 23015637,
@@ -248,7 +257,8 @@
         "yardage": 231.0,
         "fiber_categories": []
       },
-      "color_family_name": "Black"
+      "color_family_name": "Black",
+      "created_at": "2025/01/10 15:45:00 +00:00"
     },
     {
       "id": 28043812,
