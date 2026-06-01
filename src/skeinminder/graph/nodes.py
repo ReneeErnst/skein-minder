@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 import click
@@ -31,6 +32,8 @@ from skeinminder.ravelry.patterns import PatternSummary, RawPattern, normalize_p
 
 _STASH_FIRST_TRIGGERS = frozenset({"make with", "use up", "use my", "i have"})
 
+_TEMPORAL_TRIGGERS = frozenset({"oldest", "longest", "been sitting", "first acquired"})
+
 _SWEATER_GARMENTS: list[str] = [
     "cardigan",
     "pullover",
@@ -41,6 +44,19 @@ _SWEATER_GARMENTS: list[str] = [
 ]
 
 _TIER_ORDER: dict[str, int] = {"library": 0, "free": 1, "popular": 2}
+
+_DATE_SORT_SENTINEL = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _date_sort_key(item: StashItem) -> datetime:
+    """Return a sortable datetime, handling naive/tz-aware/None dates.
+
+    Naive datetimes are converted to UTC. None becomes datetime.max (sorts last).
+    """
+    d = item.added_date
+    if d is None:
+        return _DATE_SORT_SENTINEL
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
 def _pattern_from_raw(raw: RawPattern, library_ids: set[int]) -> PatternSummary:
@@ -122,6 +138,7 @@ def supervisor(state: GraphState) -> dict[str, Any]:
         stash_filter = StashFilter(
             weight=find_weight_in_text(text),
             min_yards=_extract_yards(text),
+            oldest_first=any(t in text for t in _TEMPORAL_TRIGGERS),
         )
         langfuse_context.update_current_observation(metadata={"mode": mode})
         return {"mode": mode, "user_goal": None, "stash_filter": stash_filter}
@@ -136,7 +153,8 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
 
     Excludes: weaving yarn; weight mismatches when a weight keyword is present;
     non-sweater-quantity items when a sweater-scale garment is mentioned;
-    fiber mismatches for the detected garment type. Sorts by yards_total descending.
+    fiber mismatches for the detected garment type. Sorts by added_date ascending
+    (oldest first) if oldest_first is True, otherwise by yards_total descending.
     """
     langfuse_context.update_current_observation(
         input={
@@ -167,7 +185,11 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
             continue
         filtered.append(item)
 
-    filtered.sort(key=lambda i: i.yards_total, reverse=True)
+    sf = state.get("stash_filter")
+    if sf is not None and sf.oldest_first:
+        filtered.sort(key=_date_sort_key)
+    else:
+        filtered.sort(key=lambda i: i.yards_total, reverse=True)
     result = filtered[:20]
     langfuse_context.update_current_observation(
         metadata={"candidate_count": len(result)}
@@ -180,7 +202,8 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
     Excludes weaving yarn, then applies filters in order: specific_stash_id, weight,
-    min_yards, max_yards, color_family. Results are sorted by yards_total descending.
+    min_yards, max_yards, color_family. Results are sorted by added_date ascending
+    (oldest first) if oldest_first is True, otherwise by yards_total descending.
     """
     f = state["stash_filter"]
     langfuse_context.update_current_observation(
@@ -216,7 +239,10 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
                 continue
         filtered.append(item)
 
-    filtered.sort(key=lambda i: i.yards_total, reverse=True)
+    if f is not None and f.oldest_first:
+        filtered.sort(key=_date_sort_key)
+    else:
+        filtered.sort(key=lambda i: i.yards_total, reverse=True)
     result = filtered[:20]
     langfuse_context.update_current_observation(
         metadata={"candidate_count": len(result)}

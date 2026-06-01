@@ -19,6 +19,7 @@ from skeinminder.ravelry.normalizer import (
     ProjectQuantity,
     StashItem,
     WeightCategory,
+    _parse_ravelry_date,
     is_weaving_yarn,
     normalize_stash,
     normalize_stash_item,
@@ -271,3 +272,48 @@ def test_normalize_stash_item_falls_back_to_default_skeins(
 ) -> None:
     item = normalize_stash_item(raw)
     assert item.skeins == 1.0
+
+
+@pytest.mark.parametrize(
+    "raw_str,expected_year,expected_utc_offset_seconds",
+    [
+        pytest.param("2022/03/15 10:30:00 +05:30", 2022, 19800, id="positive_offset"),
+        pytest.param("2019/11/01 08:00:00 -07:00", 2019, -25200, id="negative_offset"),
+    ],
+)
+def test_parse_ravelry_date_valid(
+    raw_str: str, expected_year: int, expected_utc_offset_seconds: int
+) -> None:
+    result = _parse_ravelry_date(raw_str)
+    assert result is not None
+    assert result.year == expected_year
+    assert result.tzinfo is not None
+    offset = result.utcoffset()
+    assert offset is not None
+    assert offset.total_seconds() == expected_utc_offset_seconds
+
+
+@pytest.mark.parametrize(
+    "raw_str",
+    [
+        pytest.param(None, id="none_input"),
+        pytest.param("not-a-date", id="malformed"),
+    ],
+)
+def test_parse_ravelry_date_returns_none_for_invalid(raw_str: str | None) -> None:
+    assert _parse_ravelry_date(raw_str) is None
+
+
+def test_normalize_stash_item_parses_created_at() -> None:
+    raw = _make_raw_item()
+    raw_with_date = raw.model_copy(update={"created_at": "2022/03/15 10:30:00 +00:00"})
+    item = normalize_stash_item(raw_with_date)
+    assert item.added_date is not None
+    assert item.added_date.year == 2022
+    assert item.added_date.tzinfo is not None
+
+
+def test_normalize_stash_item_added_date_none_when_no_created_at() -> None:
+    raw = _make_raw_item()
+    item = normalize_stash_item(raw)
+    assert item.added_date is None

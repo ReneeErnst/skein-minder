@@ -74,7 +74,7 @@ LANGFUSE_HOST=          # defaults to http://localhost:3000
 
 Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
 
-## What's built (Phases 1–7)
+## What's built (Phases 1–8)
 
 ```
 src/skeinminder/
@@ -82,7 +82,9 @@ src/skeinminder/
     client.py           # RavelryClient — Basic Auth, pagination, retry
                         #   Phase 6a: + get_library_pattern_ids, search_patterns, get_pattern_details
     models.py           # Raw Pydantic models (prefix Raw*) — thin wrappers around API JSON
+                        #   Phase 8: RawStashItem gains created_at: str | None = None
     normalizer.py       # normalize_stash() → StashItem; weight/fiber scoring utilities
+                        #   Phase 8: StashItem gains added_date: datetime | None; _parse_ravelry_date helper
     patterns.py         # Phase 6a: RawPattern, RawPatternFull, RawLibrarySearchResponse,
                         #   PatternSummary, normalize_pattern()
                         #   Phase 7: + RawFirstPhoto; PatternSummary gains photo_url
@@ -95,11 +97,14 @@ src/skeinminder/
     state.py       # GraphState (TypedDict), StashFilter, Recommendation
                    #   Phase 6b: Recommendation gains pattern_id/name/url (nullable);
                    #   GraphState gains ravelry_username, use_fixture, pattern_candidates
+                   #   Phase 8: StashFilter gains oldest_first: bool = False
     graph.py       # build_graph() — compiles the LangGraph StateGraph
                    #   Phase 6b: pattern_search wired in on both routing paths
     nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality,
                    #   low_confidence_output, pattern_search, recommend, format_output
                    #   Phase 6b: + pattern_search node; recommend + format_output updated
+                   #   Phase 8: + _TEMPORAL_TRIGGERS, _date_sort_key; supervisor sets oldest_first;
+                   #            filter nodes sort by added_date when oldest_first=True
   web/             # Phase 7: browser UI
     __init__.py
     events.py      # stream_graph_events() async generator; _build_result_payload(); _sse()
@@ -146,8 +151,8 @@ supervisor → [project_first_filter | stash_first_filter]
              low:  low_confidence_output → (force_recommend?) pattern_search → recommend | END
 ```
 
-- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs.
-- **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords; both sort descending by yards.
+- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs; detects temporal phrases ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True`. Phase 13 will allow the web UI to pre-set `mode` in `GraphState`; when mode is already set, supervisor skips classification but still runs filter extraction.
+- **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords. Sort order: `added_date` ascending (oldest first) when `oldest_first=True`, otherwise `yards_total` descending.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `pattern_search` or `low_confidence_output` accordingly.
 - **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
 - **pattern_search**: deterministic node that runs four Ravelry API calls (library IDs, free search, popular search, batch detail), each independently graceful. Writes `pattern_candidates` sorted library→free→popular, capped at 10. Uses `FixtureTransport` when `use_fixture=True`; falls back to live credentials otherwise. Full failure writes `[]`, which causes `recommend` to produce abstract archetypes.
@@ -170,9 +175,10 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
 - Tests use `FixtureTransport` (injected into `RavelryClient` via the `transport=` kwarg) — never hit the live Ravelry API in tests.
-- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 9 stub).
-- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 9 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
+- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 10 stub).
+- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 10 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
 - Every future write tool needs a dry-run mode.
+- The web UI is being extended to a three-mode wizard (Phases 13–14): Mode 1 open/allow-purchase, Mode 2 stash-constrained project-first, Mode 3 yarn-specific stash-first. New `GraphState` fields `allow_purchase: bool` (Phase 14) will be added; avoid hardcoding assumptions that recommendations must always draw from stash yarn.
 
 ## Git workflow
 

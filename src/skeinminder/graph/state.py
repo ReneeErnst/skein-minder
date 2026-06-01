@@ -18,6 +18,7 @@ class StashFilter(BaseModel):
     max_yards: float | None = None
     color_family: str | None = None
     specific_stash_id: int | None = None
+    oldest_first: bool = False
 
 
 class Recommendation(BaseModel):

@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31_
+_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18; Phase 8 complete — PR #12)_
 
 ## Working project name
 
@@ -228,7 +228,7 @@ src/skeinminder/web/
                  #   POST /recommend → stream_id (non-blocking)
                  #   GET /stream/{id} → SSE
                  #   GET /replay → last_run.json fallback
-                 #   POST /approve/{id}, POST /cancel/{id} → Phase 9 stubs
+                 #   POST /approve/{id}, POST /cancel/{id} → Phase 10 stubs
   static/
     index.html   # three-phase structure (phase-input / phase-running / phase-results)
     app.js       # SSE consumer, phase controller, card renderer, Load last run
@@ -260,22 +260,156 @@ tests/
 
 ---
 
-### Phase 7b — Stash date filtering
+### Phase 8 — Stash date filtering ✅ COMPLETE (PR #12)
 
-Goal: surface when a stash item was added so the graph can correctly answer temporal queries like "use up my oldest fingering weight" or "what have I had sitting around the longest."
+Surfaces `created_at` from Ravelry stash items so temporal queries like "use my oldest fingering weight" sort by acquisition date rather than yardage. All changes are additive — existing behavior is unchanged when `oldest_first=False`.
 
-Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), but `RawStashItem` drops it today via `extra="ignore"`.
+Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), which was previously dropped by `extra="ignore"`.
 
-All changes are additive — existing behavior is unchanged when `oldest_first=False` (the default).
+**What was built:**
+
+- `RawStashItem` gains `created_at: str | None = None`.
+- `StashItem` gains `added_date: datetime | None = None`. New `_parse_ravelry_date(s)` helper in `normalizer.py` parses the Ravelry date string (handles timezone offsets; returns `None` for None or malformed input). `normalize_stash_item` populates `added_date`.
+- `StashFilter` gains `oldest_first: bool = False`.
+- `supervisor` detects `_TEMPORAL_TRIGGERS` frozenset ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True` on the `StashFilter`.
+- Both filter nodes: when `oldest_first=True`, sort by `added_date` ascending via `_date_sort_key` (items with no date sort last via `datetime.max` sentinel); otherwise sort by `yards_total` descending.
+- `tests/fixtures/stash_list.json`: 10 of 39 items now carry `created_at` with a spread of 2016–2025 dates (3 old / 4 mid / 3 recent).
+- Tests added: `_parse_ravelry_date` (4 cases), supervisor temporal keyword detection (5 parametrized cases), filter sort-by-age including `project_first_filter` path and naive-datetime guard.
+
+Note: `stash_list_full.json` still lacks `created_at` (built via `model_dump()` before the field was added); re-running the recorder is the cleanest way to refresh it. The sanitizer does not currently strip `created_at` — timestamps are low-sensitivity, but add them to `_sanitize_stash_item` before the next fixture refresh if desired.
+
+**211 tests passing, CI clean.**
+
+---
+
+**Demo completion order.** Phases 1–8 are merged. To reach a strong live demo for a technical audience, complete in this order:
+
+1. **Phase 9** — demo polish (`click.confirm` in `low_confidence_output` currently hangs the web UI on the low-confidence path — a hard blocker before any live demo; Phase 9 also adds mode echo-back, compile-once graph optimization, and stream TTL eviction)
+2. **Phase 10** — human approval (the product's core safety claim is today a stub: `/approve` and `/cancel` return 202 and do nothing; for a technically demanding audience this is the centerpiece feature, not a stretch goal)
+3. **Phase 12** — eval depth (a failing golden example with a visible Langfuse trace is stronger demo material than three examples that all pass)
+
+Phases 11 and 13–18 strengthen the product but are not required for a compelling technical demo.
+
+---
+
+### Phase 9 — Demo polish
+
+Goal: two targeted improvements that unblock a clean live demo and lay groundwork for Phase 10. Both are self-contained.
+
+**Stream the `recommend` LLM response**
+
+The `recommend` node currently blocks 2–5 seconds before the user sees anything. The Anthropic API supports streaming; adding it gives visible progress immediately. The SSE infrastructure in `events.py` already carries the result payload — the change is in how `recommend` produces tokens, not how the frontend receives them. This is the highest-impact UX improvement relative to effort in the backlog.
+
+**`click.confirm` → LangGraph `interrupt()` (in `low_confidence_output`)**
+
+`low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism is required before Phase 10 anyway. This also requires wiring a `MemorySaver` checkpointer into `build_graph()` — the same checkpointer Phase 10 depends on.
 
 Tasks:
-- Add `created_at: str | None = None` to `RawStashItem`.
-- Add `added_date: datetime | None = None` to `StashItem`; parse the Ravelry date string in `normalize_stash_item`.
-- Add `oldest_first: bool = False` to `StashFilter`.
-- Extend supervisor keyword detection for temporal phrases ("oldest", "longest", "been sitting", "first acquired"); set `oldest_first=True` on the resulting `StashFilter`.
-- Update `stash_first_filter` to sort ascending by `added_date` when `oldest_first=True`, with `None` dates last. Apply the same logic to `project_first_filter` for symmetry.
-- Refresh committed fixture files to include representative `created_at` values — re-run the recorder, or add plausible dates manually to the existing 39-item fixture. (Note: `stash_list_full.json` also lacks `created_at` since it was built via `model_dump()` before the field was added; re-recording is the cleanest path.)
-- Add tests: supervisor temporal keyword detection, filter sort-by-age, normalizer `added_date` parsing including timezone-aware strings and `None` input.
+- Replace `click.confirm()` in `low_confidence_output` with `interrupt()` — this is the hard blocker; the web UI hangs indefinitely on the low-confidence path today.
+- Wire `MemorySaver` checkpointer into `build_graph()`; propagate `thread_id` through the CLI and web server.
+- Update tests for the interrupt-based low-confidence path.
+- Add streaming to `recommend` node; emit SSE token events so the frontend shows incremental output.
+- Echo the detected mode in the web UI before the graph continues (e.g., "Running in stash-first mode…"). One sentence of feedback that makes silent supervisor misclassification visible without adding latency. This is the cheapest fix for supervisor robustness and should be done before any embedding-based classifier work.
+- Compile the LangGraph graph once at server startup rather than per-request. `stream_graph_events()` currently calls `build_graph()` on every SSE request; move compilation into `create_app()` and pass the compiled graph through.
+- Wire TTL-based eviction for `_streams` (moved up from Phase 15 — this is a memory leak, not cleanup). Store a creation timestamp alongside each queue; a lightweight `asyncio` background task sweeps entries older than ~5 minutes. Prevents unbounded memory growth when clients call `POST /recommend` but never connect to `GET /stream/{id}`.
+
+---
+
+### Phase 10 — Human approval checkpoints
+
+_Promoted from Phase 12. Phase 9 lays the required checkpointer groundwork. Full planning notes in the Implementation plan section below._
+
+Goal: demonstrate safe agentic control before any write operations — the centerpiece feature for a technically demanding audience. Surfaces LangGraph checkpointing, the interrupt/resume pattern, and human-in-the-loop design together.
+
+---
+
+### Phase 11 — Ravelry project write-back
+
+_Promoted from Phase 13. Depends on Phase 10 (approval gate). Full planning notes in the Implementation plan section below._
+
+_**Demo path: defer until after Phase 12.** Phase 11 completes the first end-to-end write loop but is not required for a compelling demo — Phase 10 (the approval gate itself) is the feature a technical audience wants to see. Implement Phase 12 (eval depth) before Phase 11._
+
+Goal: create or update a Ravelry project from an approved recommendation, completing the first end-to-end write loop.
+
+---
+
+### Phase 12 — Eval depth pass
+
+Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
+
+Tasks:
+- Add one failing or edge-case golden example: an input that fails a deterministic assertion (e.g., hallucinated stash ID) or scores below threshold on the LLM-as-judge. Document why it fails and what the graph state shows.
+- Add a third judge dimension: **pattern relevance**. Now that Phase 6 ships real pattern links, the judge can score whether the recommended pattern is a plausible fit for the stash yarn, not just whether the reasoning is coherent.
+- Verify the Langfuse dashboard is demo-ready: a recent run logged with visible token counts, cost per run, and judge scores on all three dimensions. Run `skeinminder eval` against live fixtures before the interview.
+- Confirm prompt caching is working: a second identical run should show `cache_read_input_tokens` in the `recommend` node's Langfuse span.
+
+---
+
+### Phase 13 — Guided UX Wizard (Modes 2 & 3)
+
+_Deferred from Phase 9. Product UX improvement — deprioritized in favor of Phase 10 (human approval) before the interview. Resume after Phase 12._
+
+Goal: Replace the single free-text input with a guided two-step wizard. Step 1 presents the three intent modes (Mode 1 rendered but disabled pending Phase 14). Modes 2 and 3 are fully implemented here. This removes the need for users to know supervisor trigger phrases and enables pre-graph stash disambiguation for Mode 3.
+
+**Dependency:** Phase 8 (stash date filtering) should complete first so that `added_date` is available on `StashItem` and can be included in the `GET /stash` response. If Phase 13 ships before Phase 8, the `/stash` endpoint omits `added_date` and the Mode 3 search UI cannot display yarn age; the field can be added in Phase 8 without breaking Phase 13's other work.
+
+**Step 1 — Mode selector:**
+
+The `phase-input` screen is preceded by a new `phase-mode` screen with three option cards. Mode 1 is visible but disabled with a "Coming soon" label. Selecting Mode 2 or 3 transitions to a mode-appropriate `phase-input` form.
+
+**Mode 2 — "Make something with my stash":**
+
+Step 2 is the existing text box with a smarter label and placeholder: "Describe what you'd like to make — garment type, weight, skill level, any preferences." No backend changes. The supervisor runs as today (project_first path).
+
+**Mode 3 — "Use a specific yarn":**
+
+Step 2 shows a yarn search field. As the user types, results filter against `/stash` data in real time. The user confirms a match and proceeds, or falls through to a free-text input if they want to describe by type rather than pick a specific item.
+
+Pre-graph disambiguation:
+- Specific yarn confirmed: graph runs with `stash_filter=StashFilter(specific_stash_id=<id>)` pre-set and `mode="stash_first"` injected into initial `GraphState`. Supervisor respects a pre-set mode rather than reclassifying.
+- Yarn not found before submission: return an error immediately — no graph run, no LLM call.
+- Browse/type fallback: supervisor runs as today's stash_first path.
+
+`stash_first_filter` already handles `specific_stash_id` correctly (filters to exactly that item).
+
+**Backend changes:**
+- `GET /stash` endpoint: returns normalized stash as a lightweight list — `{stash_id, brand, yarn_name, colorway, weight_category, yards_total}` per item — for client-side search.
+- `POST /recommend` body gains `mode: Literal["project_first", "stash_first"] | None` and `stash_id: int | None`. When provided, these are injected into the initial `GraphState` before the graph runs.
+- `supervisor` node: if `state["mode"]` is already set (non-empty), skip mode classification but still run temporal keyword extraction (Phase 8's `oldest_first` detection). Only the routing decision is bypassed — filter enrichment still applies.
+- `GET /stash` response: include `added_date` when populated (requires Phase 8); omit the field gracefully if Phase 8 has not shipped.
+
+**Frontend changes:**
+- `index.html`: new `phase-mode` section with three option cards.
+- `app.js`: initial phase is `phase-mode`; mode selection advances to `phase-input` with the appropriate form. Mode 3 fetches `/stash` on first load, filters client-side as the user types, and shows a confirmation step before calling `/recommend`.
+- `style.css`: mode card styles.
+
+**Speed and cost benefits:**
+- Mode 3 with a confirmed yarn: supervisor skips classification, `recommend` node receives a 1-item filtered stash rather than up to 20 candidates — smaller, cheaper LLM call. Failed yarn lookup aborts before any graph work.
+- Mode 2: no backend speed change; clarity improvement only.
+
+---
+
+### Phase 14 — Allow Purchase Mode (Mode 1)
+
+_Deferred from Phase 10. Depends on Phase 13 (Guided UX Wizard)._
+
+Goal: Implement the "open to buying yarn" mode, completing the three-mode wizard from Phase 13. The LLM can recommend projects that require purchasing yarn, while still prioritizing stash matches when available.
+
+**UX changes:**
+- Enable Mode 1 card in the wizard (remove "Coming soon" state).
+- Mode 1 `phase-input`: same text box as Mode 2 with a different placeholder: "What would you like to make? We'll use your stash where possible and suggest yarn to buy if needed."
+- Result cards: when `purchase_suggestion` is present, render a "You may need to buy yarn" section below the rationale.
+
+**Backend changes:**
+- `allow_purchase: bool` added to `GraphState` (default `False`).
+- `POST /recommend` body gains `allow_purchase: bool`; set to `True` for Mode 1.
+- `recommend` prompt: when `allow_purchase=True`, the stash-only constraint is lifted. The prompt adds: "If no stash yarn is a good fit, you may suggest that the user purchase yarn for this project. Populate `purchase_suggestion` with a brief description of what to look for (weight, fiber, yardage)."
+- `Recommendation` model: add `purchase_suggestion: str | None = None`.
+- `format_output`: render `Purchase suggestion: ...` line when set.
+- `_build_result_payload` in `events.py`: include `purchase_suggestion` in the SSE result payload.
+- Tests: unit tests for the modified `recommend` prompt path; update eval golden examples to cover Mode 1 behavior.
+
+**Key distinction from Mode 2:** Mode 2 recommendations always reference a stash yarn. Mode 1 recommendations may include a `purchase_suggestion` instead of or alongside `yarn_candidate_ids` when no stash yarn is a good fit.
 
 ---
 
@@ -330,7 +464,7 @@ The raw capture (pre-Pydantic) revealed the following about the detail format vs
 - `packs` (detail only) — **critical**: carries `skeins`, `total_yards`, `total_grams`, `yards_per_skein`, `grams_per_skein`, `total_meters`, `meters_per_skein`
 - `yarn_weight_name` (detail only) — useful fallback if `yarn.yarn_weight` is absent
 - `long_yarn_weight_name` (detail only) — human-readable weight label
-- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 7b.
+- `created_at` (both list and detail) — date the item was added to the stash; format `"YYYY/MM/DD HH:MM:SS ±HH:MM"`. Confirmed via raw capture (`stash_list_raw.json`). Needed for age-based sorting ("use up my oldest yarn"). Dropped today by `extra="ignore"` — see Phase 8.
 - `updated_at` (both list and detail) — date the item was last edited; same format. Lower priority than `created_at`.
 
 ## API discrepancies (to report to Ravelry)
@@ -359,29 +493,39 @@ LangGraph is a good fit because the project needs state, routing, persistence, a
 
 ## Product concept
 
-### Two entry modes
+### Three entry modes
 
-The system supports two directions of use. Both share the same downstream filtering and recommendation logic — only the starting point differs.
+The system supports three directions of use, presented to the user as a mode selector in the web UI. All three share the same downstream filtering and recommendation logic — only the starting point and purchasing constraint differ.
 
-**Project-first (goal-directed):** User specifies a project goal and the agent finds matching stash yarn.
+**Mode 1 — Open ("I want to make something new"):** User describes a project goal; recommendations use stash yarn where available but may suggest purchasing yarn if no stash item fits well. This is the least constrained mode.
+
+```text
+"I want to knit a colorwork yoke sweater."
+  -> filter stash by weight, yardage, fiber suitability
+  -> recommend projects; if stash yarn is insufficient, include a purchase suggestion
+```
+
+**Mode 2 — Stash-constrained ("I want to make something with my stash"):** User describes a project goal; recommendations are constrained to stash yarn only. Equivalent to the original project-first behavior.
 
 ```text
 "I want a fall cardigan, medium difficulty, something I can finish in 6 weeks."
   -> filter stash by weight, yardage, fiber suitability
   -> rank candidates
-  -> return recommendations
+  -> return recommendations (stash yarn only)
 ```
 
-**Stash-first:** User specifies a stash item or yarn type and the agent finds fitting project archetypes.
+**Mode 3 — Yarn-specific ("I want to use a specific yarn"):** User identifies a yarn from their stash (by name search or free text); the agent finds fitting project archetypes for that yarn. Pre-graph disambiguation means the graph gets a single confirmed stash item rather than a filtered list — smaller LLM context, faster response.
 
 ```text
-"What can I make with my 900 yards of sport weight silk?"
-"Help me use up this merino worsted."
-  -> locate matching stash items
-  -> recommend project archetypes that fit
+"I want to use my Cascade 220 Superwash in the teal colorway."
+  -> user searches stash, confirms the match
+  -> graph runs with specific_stash_id pre-set
+  -> recommend project archetypes that fit that yarn
 ```
 
-The graph state must accommodate both entry points from Phase 3 onward. The input fields `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present.
+Modes 2 and 3 are implemented in Phase 13. Mode 1 is implemented in Phase 14.
+
+The graph state must accommodate all three entry points. `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present. `allow_purchase` (Phase 14) controls whether Mode 1's looser constraint is active.
 
 ### Core workflow
 
@@ -689,12 +833,12 @@ Broken into three subphases:
 
 **Phase UI-b — Frontend structure + graph animation:** Three-phase page (input → running → results), vis-network node animation driven by SSE events, status text per node in plain English. UI-a and UI-b can run as parallel subagents — the SSE event schema is the shared contract.
 
-**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 9 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 9).
+**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 10 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 10).
 
 **SSE event schema (the UI-a/UI-b contract):**
 ```
 node_start / node_complete — drives graph animation
-node_awaiting_approval     — Phase 9 seam (defined now, emitted in Phase 9)
+node_awaiting_approval     — Phase 10 seam (defined now, emitted in Phase 10)
 result                     — full recommendation payload, auto-saved
 error                      — renders error state
 ```
@@ -719,28 +863,11 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
-### Phase 8 — Performance and cleanup backlog
+### Phase 15 — Cleanup backlog
 
-_Identified during design review on 2026-05-31. These are not blocking Phase 7 Web UI but should land before Phase 9 adds human-in-the-loop complexity. Can run in parallel with Phase 7._
+_Revised 2026-05-31. Streaming, interrupt migration, stream TTL eviction (a memory leak, not cleanup), and mode echo-back were all pulled forward to Phase 9. Parallelism, async pagination, and caching remain deferred to Phase 18 where they fit naturally._
 
-**1. Parallel pattern search and stash filtering (LangGraph fan-out)**
-
-The highest-leverage parallelism opportunity in the graph. Pattern search and stash filtering are independent operations — pattern search needs the goal/weight from `supervisor`, stash filtering needs the stash — and can run in parallel via LangGraph's fan-out support. After `supervisor` resolves, two branches can execute concurrently:
-
-- `project_first_filter` or `stash_first_filter` (~10ms)
-- `pattern_search` node (~500ms–1s: Ravelry pattern search + detail fetch)
-
-Both results join before `assess_filter_quality`. This eliminates pattern lookup latency from the user's perspective without affecting the LLM call. Without parallelism, pattern search would add ~500ms–1s of sequential wait time before the already-dominant LLM call.
-
-**2. Stream the `recommend` LLM response**
-
-The `recommend` node blocks for 2–5 seconds before the user sees anything. The Anthropic API supports streaming; adding it gives visible progress immediately and is the fastest UX improvement available without structural changes to the graph.
-
-**3. Async Ravelry pagination**
-
-`get_stash_list()` and `get_library_pattern_ids()` paginate sequentially. For a 1,300-item stash (13 pages), switching from `httpx.Client` to `httpx.AsyncClient` with `asyncio.gather()` could reduce stash load time by 70–80% on live runs. Requires converting `RavelryClient` to async or adding an async variant. The pattern search path (`search_patterns` + `get_library_pattern_ids`) would benefit from the same treatment, since those two calls are also independent and currently would run serially.
-
-**4. Richer filter quality signals**
+**1. Richer filter quality signals**
 
 `assess_filter_quality` checks only two conditions: empty filtered stash, or sweater goal with <500 yards. Additional signals worth adding:
 
@@ -748,33 +875,53 @@ The `recommend` node blocks for 2–5 seconds before the user sees anything. The
 - No candidates match the fiber suitability score for the goal garment type (all MISMATCH)
 - Pattern candidates found but no stash yarn within one weight step of any pattern's required weight
 
-**5. `click.confirm` → LangGraph `interrupt()`**
+**2. Supervisor robustness**
 
-`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 9 anyway; doing it here cleans up the code before more complexity lands.
+The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified.
 
-**6. Supervisor robustness**
+Recommended path, in order of complexity:
 
-The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 9 if not blocking demo.
+1. Expand the keyword set with common paraphrases ("i've got some", "there's yarn in my stash", "i want to use"). Handles the majority of real inputs at zero latency cost — do this first regardless.
+2. Add a sentence-transformer embedding classifier (e.g., `all-MiniLM-L6-v2`, ~80MB) as a fallback when no keyword matches. Computes cosine similarity against a few prototype sentences per class. Runs in ~10–30ms on CPU with no network call or GPU requirement.
+
+Option 3 (echo the detected mode and let the user correct it before the graph runs) was pulled forward to Phase 9 — it's the cheapest fix and should ship before anything else in this list.
+
+A full generative LLM call for this classification (~200–400ms API round-trip) is disproportionate for a binary intent detection task. A self-hosted small LLM on CPU is typically no faster than the API call and adds infrastructure overhead. The sentence-transformer approach is the right ceiling for this problem.
+
+Defer option 2 until the keyword expansion (option 1) is in place and still producing visible misclassifications.
+
+**3. `pattern_search` weight selection**
+
+The node derives the Ravelry query weight as `max(filtered_stash, key=lambda i: i.yards_total).weight_category`. When `project_first_filter` runs without a weight constraint, `filtered_stash` may span multiple weight categories; the search covers only the heaviest-yardage item's weight and misses patterns suited to lighter items. Better priority order: extract weight from the user's goal first; fall back to the modal weight across filtered items; then fall back to the heaviest-yardage item.
+
+**4. Hallucinated stash IDs fail silently**
+
+`format_output` calls `stash_by_id.get(sid)` and silently drops any ID the LLM invented. The eval suite's `assert_example()` catches this in tests, but production runs have no signal. Add `_logger.warning("LLM returned stash ID %d not in filtered_stash", sid)` — one line, materially improves debuggability.
+
+**5. `LAST_RUN_PATH` is a process-relative path**
+
+`LAST_RUN_PATH = Path("last_run.json")` resolves against whatever directory `uvicorn` starts in. Pin it relative to `__file__` or make it configurable via env var. Low priority until Phase 18 replaces it with a proper result store, but trivial to harden now.
 
 ---
 
-### Phase 9 — Human approval checkpoints
+### Phase 10 — Human approval checkpoints
 
-Goal: demonstrate safe agentic control before any write operations.
+Goal: demonstrate safe agentic control before any write operations. Phase 9 lays the required groundwork — the `MemorySaver` checkpointer is wired and `low_confidence_output` is migrated to `interrupt()` there; Phase 10 extends the same pattern to the write-operation approval gate.
 
 Tasks:
-- Replace `click.confirm()` in `low_confidence_output` with LangGraph `interrupt()`.
 - Add interrupt/checkpoint before any write operations.
 - Show draft payload before side effects.
 - Require explicit approval to continue.
 - Store graph thread state.
 - Add rejection/edit path.
 
-**Web UI integration:** Phase UI-c builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 9 wires the real `interrupt()` call — no frontend changes needed beyond what Phase UI-c already delivers.
+**LangGraph checkpointing:** `interrupt()` requires a checkpointer — LangGraph must be able to serialize and store the graph state at the pause point so it can resume after the user approves. For local/demo use, `MemorySaver` (in-process) is sufficient. For multi-user deployment, a `PostgresSaver` (or equivalent persistent checkpointer) is required, since the graph may pause across requests and the server may restart in between. The checkpointer also enables multi-turn conversation within a session ("show me simpler options" or "try worsted instead"), since prior state can be loaded and branched from. Wire the checkpointer when implementing `interrupt()` — retrofitting it later requires thread-ID management that's easier to add once at the start.
 
-Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
+**Web UI integration:** Phase 7 (UI-c) builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 10 wires the real `interrupt()` call — no frontend changes needed beyond what Phase 7 already delivers.
 
-### Phase 10 — Ravelry project write-back
+Note: the low-confidence interactive prompt migrated in Phase 9 is a lightweight precursor to this — same interrupt/resume concept applied earlier in the graph.
+
+### Phase 11 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
@@ -788,15 +935,104 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 11 — External productivity integration (tentative)
+### Phase 12 — Eval depth pass
+
+Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
+
+Tasks:
+- Add one failing or edge-case golden example: an input that fails a deterministic assertion (e.g., hallucinated stash ID) or scores below threshold on the LLM-as-judge. Document why it fails and what the graph state reveals in the Langfuse trace.
+- Add a third judge dimension: **pattern relevance**. Now that Phase 6 ships real pattern links, the judge can score whether the recommended pattern is a plausible fit for the stash yarn — not just whether the reasoning is coherent.
+- Verify the Langfuse dashboard is demo-ready: a recent run logged with visible token counts, cost per run, and judge scores on all three dimensions. Run `skeinminder eval` against live fixtures before the interview.
+- Confirm prompt caching is working: a second identical run should show `cache_read_input_tokens` in the `recommend` node's Langfuse span.
+
+### Phase 16 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
-Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 10 before committing to Phase 11.
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 11 (Ravelry write-back) before committing to Phase 16.
 
-### Phase 12 — Documentation polish
+### Phase 17 — Documentation polish
 
 The demo UI itself (fixture mode, fallback, animated graph, result cards) is delivered by Phase UI. This phase covers remaining documentation artifacts: screenshots/GIFs for the README, an architecture diagram, sample prompt scripts, and a known-limitations section.
+
+---
+
+### Phase 18 — Production deployment readiness
+
+Goal: make SkeinMinder safe to deploy for more than one user. The changes here are not about new features — they are about isolating users from each other, managing resources correctly, and handling credentials at production scale. Also incorporates the parallelism and caching work deferred from Phase 15.
+
+**Dependency:** Phase 10 (human approval checkpoints) should complete first — specifically the LangGraph checkpointer work — since that decision directly shapes the persistence layer choices here.
+
+**1. Multi-user session layer**
+
+Currently the app is hard-wired for one user: credentials come from env vars, one stash is loaded at startup, and `ravelry_username` is a single string in `GraphState`. To serve multiple users:
+
+- Each request must carry its own Ravelry credentials. The most straightforward path for a web deployment is an OAuth flow using Ravelry's OAuth 2 support; Basic Auth with per-user credential storage is an alternative if OAuth is not available.
+- `create_app()` can no longer take a single `stash` argument. Stash loading moves from startup into the request handler, guarded by the per-user TTL cache (item 5 below).
+- `ravelry_username` in `GraphState` must reflect the requesting user, not a process-level constant.
+
+**2. Per-user stash isolation**
+
+Once the session layer exists, the stash cache (item 5 below) becomes the primary data store for user state between requests. Key requirements:
+
+- Cache entries must be keyed by authenticated user identity, not just the username string.
+- Strip `notes` from cached stash items — this field can contain personal context (gift notes, purchase history, prices paid) and should not persist beyond the lifetime needed for a single recommendation run.
+- Normalized stash size at scale: ~1–2MB per user. At 1,000 concurrent users that is 1–2GB in Redis — manageable. The normalized form is already compact since `StashItem` discards most `RawStashItem` fields.
+
+**3. Run result persistence**
+
+`last_run.json` is a single file written to the working directory. It is not user-scoped, not safe for concurrent writes, and disappears on redeploy. Replace it with a proper result store:
+
+- A `runs` table in Postgres (or similar) keyed by `(user_id, run_id)` with a TTL or explicit cleanup policy.
+- The `/replay` endpoint queries the store by authenticated user rather than reading a hardcoded file path.
+- Consider whether run history (more than just the last run) is useful — users may want to compare recommendations across sessions.
+
+**4. Cost and rate limit considerations**
+
+At scale, per-request Ravelry API calls are the primary cost risk, not LLM calls. A single recommendation run makes up to four Ravelry API calls (items 5 and 6 below address caching). Beyond caching:
+
+- Monitor Ravelry API rate limits (open question 5 — limits are not documented, test empirically). Add per-user rate limiting at the application layer before Ravelry enforces it.
+- LLM cost per run is low using Haiku (~$0.01 or less). If Sonnet is ever used for better recommendation quality, cost rises to ~$0.05–0.10 per run — still acceptable for a consumer app but worth tracking via Langfuse cost reporting.
+- Prompt caching (`cache_control: ephemeral`) is already in place on the system prompt. Make sure the system prompt is stable across requests for the same user — any per-user content injected into the system prompt breaks cache hits.
+
+**5. Normalized stash caching**
+
+The stash is currently fetched from Ravelry and normalized on every process start. For a web service, this means every cold start hits the API. A simple TTL cache (15–30 minutes, keyed by Ravelry username) eliminates repeated fetches within a session and is negligible in storage: a normalized stash of 1,300 items serializes to roughly 1–2MB of JSON — the normalized form is smaller than the raw API response because `StashItem` discards most `RawStashItem` fields.
+
+Implementation notes:
+- In-memory dict cache is sufficient for a single-process server; Redis if multi-process.
+- Cache the normalized `list[StashItem]`, not the raw API response. Normalization is cheap but the raw response is larger.
+- Strip the `notes` field before caching — it can contain PII (purchase history, gift notes, personal context) and is not used by any graph node. The same principle that governs `sanitizer.py` for fixtures applies here.
+- Add a "Refresh stash" button in the web UI as a manual invalidation escape hatch. Ravelry has no push events (no webhooks), so TTL expiry is the only automatic mechanism.
+
+**6. Pattern search caching**
+
+`pattern_search` makes four Ravelry API calls per run (library IDs, free search, popular search, batch detail). The free and popular searches are keyed by weight and goal keyword — stable across users and requests within a short window. A shared cache (Redis, short TTL of 5–15 minutes) keyed by `(weight, query, availability, sort)` would substantially reduce Ravelry API call volume when multiple users make similar requests.
+
+Library pattern IDs are user-specific and should not be shared across users; cache them per username alongside the stash cache.
+
+**7. Parallel pattern search and stash filtering (LangGraph fan-out)**
+
+The highest-leverage parallelism opportunity in the graph. Pattern search and stash filtering are independent operations — pattern search needs the goal/weight from `supervisor`, stash filtering needs the stash — and can run in parallel via LangGraph's fan-out support. After `supervisor` resolves, two branches can execute concurrently:
+
+- `project_first_filter` or `stash_first_filter` (~10ms)
+- `pattern_search` node (~500ms–1s: Ravelry pattern search + detail fetch)
+
+Both results join before `assess_filter_quality`. This eliminates pattern lookup latency from the user's perspective without affecting the LLM call.
+
+**8. Async Ravelry pagination**
+
+`get_stash_list()` and `get_library_pattern_ids()` paginate sequentially. For a 1,300-item stash (13 pages), switching from `httpx.Client` to `httpx.AsyncClient` with `asyncio.gather()` could reduce stash load time by 70–80% on live runs. Requires converting `RavelryClient` to async or adding an async variant. The pattern search path (`search_patterns` + `get_library_pattern_ids`) would also benefit, since those two calls are independent and currently run serially.
+
+**9. Infrastructure summary**
+
+Minimum additions for a multi-user deployment:
+- Redis (stash cache + pattern search cache + stream TTL eviction)
+- Postgres (run results, LangGraph `PostgresSaver` checkpointer)
+- Session/auth layer (OAuth or equivalent)
+- Per-user rate limiting middleware
+
+The existing Docker Compose setup (currently Langfuse + Postgres) can be extended to include Redis. The Postgres instance already present for Langfuse can host the `runs` table and the LangGraph checkpointer tables in a separate schema.
 
 ---
 

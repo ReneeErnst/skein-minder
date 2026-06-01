@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -24,6 +25,7 @@ def _make_item(
     project_quantity: ProjectQuantity = ProjectQuantity.SWEATER,
     fiber: list[str] | None = None,
     is_weaving_yarn: bool = False,
+    added_date: datetime | None = None,
 ) -> StashItem:
     return StashItem(
         stash_id=stash_id,
@@ -40,6 +42,7 @@ def _make_item(
         notes=None,
         project_quantity=project_quantity,
         is_weaving_yarn=is_weaving_yarn,
+        added_date=added_date,
     )
 
 
@@ -186,6 +189,26 @@ def test_project_first_filter_sorts_by_yardage_descending() -> None:
     assert yards == sorted(yards, reverse=True)
 
 
+def test_project_first_filter_sorts_oldest_first_ascending() -> None:
+    old = datetime(2016, 3, 1, tzinfo=timezone.utc)
+    mid = datetime(2020, 6, 15, tzinfo=timezone.utc)
+    recent = datetime(2024, 1, 10, tzinfo=timezone.utc)
+    items = [
+        _make_item(stash_id=1, yards_total=900.0, added_date=recent),
+        _make_item(stash_id=2, yards_total=600.0, added_date=old),
+        _make_item(stash_id=3, yards_total=750.0, added_date=mid),
+    ]
+    result = project_first_filter(
+        _make_state(
+            stash=items,
+            user_goal="",
+            stash_filter=StashFilter(oldest_first=True),
+        )
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert ids == [2, 3, 1]  # old → mid → recent
+
+
 # --- stash_first_filter ---
 
 
@@ -273,3 +296,45 @@ def test_project_first_filter_with_real_stash(
     filtered = result["filtered_stash"]
     assert len(filtered) <= 20
     assert all(i.yards_total > 0 for i in filtered)
+
+
+def test_stash_first_filter_sorts_oldest_first_ascending() -> None:
+    old = datetime(2016, 3, 1, tzinfo=timezone.utc)
+    mid = datetime(2020, 6, 15, tzinfo=timezone.utc)
+    recent = datetime(2024, 1, 10, tzinfo=timezone.utc)
+    items = [
+        _make_item(stash_id=1, yards_total=900.0, added_date=recent),
+        _make_item(stash_id=2, yards_total=600.0, added_date=old),
+        _make_item(stash_id=3, yards_total=750.0, added_date=mid),
+    ]
+    result = stash_first_filter(
+        _make_state(stash=items, stash_filter=StashFilter(oldest_first=True))
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert ids == [2, 3, 1]  # old → mid → recent
+
+
+def test_stash_first_filter_sorts_none_date_last() -> None:
+    dated = datetime(2016, 3, 1, tzinfo=timezone.utc)
+    items = [
+        _make_item(stash_id=1, yards_total=1000.0, added_date=None),
+        _make_item(stash_id=2, yards_total=500.0, added_date=dated),
+    ]
+    result = stash_first_filter(
+        _make_state(stash=items, stash_filter=StashFilter(oldest_first=True))
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert ids == [2, 1]  # dated item before undated (None sorts last via sentinel)
+
+
+def test_stash_first_filter_handles_naive_added_date_without_crash() -> None:
+    naive = datetime(2016, 3, 1)  # no tzinfo
+    items = [
+        _make_item(stash_id=1, yards_total=900.0, added_date=naive),
+        _make_item(stash_id=2, yards_total=500.0, added_date=None),
+    ]
+    result = stash_first_filter(
+        _make_state(stash=items, stash_filter=StashFilter(oldest_first=True))
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert ids == [1, 2]  # naive date sorts before None (None is sentinel = last)

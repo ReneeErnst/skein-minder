@@ -83,6 +83,7 @@ class RawStashItem(BaseModel):
     yarn: RawYarn | None = None
     color_family_name: str | None = None
     packs: list[RawPack] = []
+    created_at: str | None = None
 
 
 class RawPaginator(BaseModel):
