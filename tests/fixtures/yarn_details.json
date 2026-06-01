@@ -1,0 +1,205 @@
+{
+  "yarns": [
+    {
+      "id": 110466,
+      "name": "Katahdin",
+      "yarn_fibers": [
+        {
+          "id": 1,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        }
+      ]
+    },
+    {
+      "id": 66891,
+      "name": "Cotton Tale 8",
+      "yarn_fibers": [
+        {
+          "id": 2,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 2,
+            "name": "Cotton",
+            "permalink": "cotton"
+          }
+        }
+      ]
+    },
+    {
+      "id": 26385,
+      "name": "Sock",
+      "yarn_fibers": [
+        {
+          "id": 3,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        }
+      ]
+    },
+    {
+      "id": 136274,
+      "name": "Superwash Merino Bulky",
+      "yarn_fibers": [
+        {
+          "id": 4,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        }
+      ]
+    },
+    {
+      "id": 39661,
+      "name": "Starry",
+      "yarn_fibers": [
+        {
+          "id": 5,
+          "percentage": 80,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        },
+        {
+          "id": 6,
+          "percentage": 20,
+          "fiber_category": {
+            "id": 3,
+            "name": "Nylon",
+            "permalink": "nylon"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3569,
+      "name": "Sea Wool",
+      "yarn_fibers": [
+        {
+          "id": 7,
+          "percentage": 70,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        },
+        {
+          "id": 8,
+          "percentage": 30,
+          "fiber_category": {
+            "id": 4,
+            "name": "Plant Fiber",
+            "permalink": "plant-fiber"
+          }
+        }
+      ]
+    },
+    {
+      "id": 65153,
+      "name": "Organic Cotton Worsted",
+      "yarn_fibers": [
+        {
+          "id": 9,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 2,
+            "name": "Cotton",
+            "permalink": "cotton"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3309,
+      "name": "Cascade 220® Heathers",
+      "yarn_fibers": [
+        {
+          "id": 10,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        }
+      ]
+    },
+    {
+      "id": 35367,
+      "name": "Tosh DK",
+      "yarn_fibers": [
+        {
+          "id": 11,
+          "percentage": 100,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        }
+      ]
+    },
+    {
+      "id": 81720,
+      "name": "Biggo",
+      "yarn_fibers": [
+        {
+          "id": 12,
+          "percentage": 50,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        },
+        {
+          "id": 13,
+          "percentage": 50,
+          "fiber_category": {
+            "id": 5,
+            "name": "Acrylic",
+            "permalink": "acrylic"
+          }
+        }
+      ]
+    },
+    {
+      "id": 143076,
+      "name": "Millefiori",
+      "yarn_fibers": [
+        {
+          "id": 14,
+          "percentage": 75,
+          "fiber_category": {
+            "id": 1,
+            "name": "Wool",
+            "permalink": "wool"
+          }
+        },
+        {
+          "id": 15,
+          "percentage": 25,
+          "fiber_category": {
+            "id": 6,
+            "name": "Silk",
+            "permalink": "silk"
+          }
+        }
+      ]
+    }
+  ]
+}
