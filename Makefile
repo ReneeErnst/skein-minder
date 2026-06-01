@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check export-traces services web up _stop-web down down-clean help
+.PHONY: install lint format typecheck test check export-traces services web up up-live _stop-web down down-clean help
 .DEFAULT_GOAL := help
 
 install: ## install dependencies
@@ -47,6 +47,10 @@ web: ## start web UI in foreground at http://localhost:8000 (pass PORT=N to chan
 
 up: services ## start everything in background — terminal freed when ready; use 'make down' to stop
 	uv run skeinminder web --fixture $(if $(PORT),--port $(PORT),) > web.log 2>&1 & echo $$! > .web.pid
+	@echo "Web UI running at http://localhost:$(or $(PORT),8000)  (logs: web.log)"
+
+up-live: services ## start everything against live Ravelry stash (requires .env credentials)
+	uv run skeinminder web $(if $(PORT),--port $(PORT),) > web.log 2>&1 & echo $$! > .web.pid
 	@echo "Web UI running at http://localhost:$(or $(PORT),8000)  (logs: web.log)"
 
 _stop-web:
