@@ -132,7 +132,7 @@ documents the planned remediation: expand the keyword set first (covers most par
 sentence-transformer embedding classifier as a fallback (a ~80MB model that runs in ~10–30ms on CPU with no network 
 call). A full LLM call for this task would be disproportionate.
 
-**At scale:** Phase 13's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
+**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
 selection pre-sets `mode` in `GraphState`, and the supervisor skips classification. That's the right long-term 
 direction: move intent disambiguation to the UI rather than making the NLP harder.
 
@@ -220,16 +220,16 @@ would add a build step with no user-visible benefit for a UI that has three stat
 renders static cards.
 
 **Tradeoff:** Vanilla JS without a framework means no component model, no reactivity, and manually managed DOM state.
- The current three-phase UI is manageable at this scale; adding the Phase 13 guided wizard (mode selector → 
- mode-specific input → results) and Phase 14 approval modal will push against the limits of manual DOM management. The 
- right point to evaluate a lightweight framework (Preact, Alpine.js) is when Phase 13 ships — not before.
+ The current three-phase UI is manageable at this scale; adding the Phase 14a guided wizard (mode selector → 
+ mode-specific input → results) and Phase 11 approval modal will push against the limits of manual DOM management. The 
+ right point to evaluate a lightweight framework (Preact, Alpine.js) is when Phase 14a ships — not before.
 
 SSE is also one-directional: the server can push events to the client, but the client can't send mid-stream messages 
 back. The approval flow (Phase 10) will need a separate HTTP POST (`/approve/{id}`) to send the user's decision back. 
 That's already stubbed.
 
 **At scale:** Multi-user use would require replacing `_streams` (an in-process dict of `asyncio.Queue` objects) with a 
-Redis pub/sub or similar external message bus. The current design uses a stream TTL eviction task (Phase 9) to prevent
+Redis pub/sub or similar external message bus. The current design uses a stream TTL eviction task (Phase 10b) to prevent
 unbounded memory growth, but it's inherently single-process.
 
 ---
@@ -351,5 +351,5 @@ host this.
 
 **Supervisor robustness.** The keyword-based supervisor misclassifies inputs that paraphrase the trigger phrases. 
 Expanding the keyword set (covers most cases at zero cost) and adding a sentence-transformer embedding classifier as a 
-fallback (Phase 15) are the right remediation steps, in that order. Phase 13's guided wizard partially sidesteps this 
-by moving intent disambiguation to the UI.
+fallback are the right remediation steps, in that order (see improvement backlog). Phase 14a's guided wizard partially 
+sidesteps this by moving intent disambiguation to the UI.

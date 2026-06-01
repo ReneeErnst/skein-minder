@@ -67,7 +67,7 @@ flowchart TD
         DateFilter["Stash Date Filtering\nadded_date · oldest_first · temporal keyword detection"]
     end
 
-    subgraph future ["📋 Phases 12–13 — planned"]
+    subgraph future ["📋 Phases 11–12 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
@@ -107,11 +107,16 @@ flowchart TD
 | 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
 | 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
 | 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | ✅ Complete |
-| 9 | Guided UX wizard — Modes 2 & 3 (stash-constrained and yarn-specific entry paths) | 📋 Planned |
-| 10 | Allow purchase mode — Mode 1 (open recommendations with yarn purchase suggestions) | 📋 Planned |
-| 11 | Performance and cleanup (parallel pattern search, async pagination, streaming) | 📋 Planned |
-| 12 | Human approval checkpoints | 📋 Planned |
-| 13 | Ravelry project write-back | 📋 Planned |
+| 9 | Pattern search quality (category filtering, weight targeting, candidate pre-filtering) | 🔄 In progress |
+| 10a | Interrupt migration + MemorySaver checkpointer | 📋 Planned |
+| 10b | LLM streaming + server polish | 📋 Planned |
+| 10c | LLM input hardening (prompt injection defense, context limits, XSS fix) | 📋 Planned |
+| 11 | Human approval checkpoint (interrupt/resume, approval gate) | 📋 Planned |
+| 12 | Ravelry project write-back | 📋 Planned |
+| 13 | Eval depth pass (failing example, pattern relevance judge dimension) | 📋 Planned |
+| 14a | UX wizard backend + Mode 2 (stash-constrained entry path) | 📋 Planned |
+| 14b | Mode 3 yarn search UI (yarn-specific entry path) | 📋 Planned |
+| 15 | Allow purchase mode — Mode 1 (open recommendations with yarn purchase suggestions) | 📋 Planned |
 
 ---
 
