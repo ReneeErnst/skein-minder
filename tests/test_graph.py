@@ -290,6 +290,90 @@ def test_pattern_search_empty_filtered_stash() -> None:
     assert result["pattern_candidates"] == []
 
 
+def test_pattern_search_uses_goal_text_weight_over_stash_weight() -> None:
+    """Goal-text weight takes precedence over stash item weight."""
+    # Stash is DK, goal says fingering → should search fingering
+    dk_item = _make_item(
+        stash_id=1, yards_total=1000.0, weight_category=WeightCategory.DK
+    )
+    state = _make_state(
+        filtered_stash=[dk_item],
+        user_goal="I want a fingering weight cardigan",
+        use_fixture=False,
+        ravelry_username="testuser",
+    )
+    mock_client = _make_client_mock(
+        library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        pattern_search(state)
+
+    for call in mock_client.search_patterns.call_args_list:
+        assert call.args[0] == "fingering", (
+            f"Expected weight='fingering', got '{call.args[0]}'"
+        )
+
+
+def test_pattern_search_uses_stash_filter_weight_in_stash_first_mode() -> None:
+    """Stash-filter weight is used when goal text has no weight keyword."""
+    dk_item = _make_item(
+        stash_id=1, yards_total=1000.0, weight_category=WeightCategory.DK
+    )
+    state = _make_state(
+        filtered_stash=[dk_item],
+        user_goal=None,
+        stash_filter=StashFilter(weight=WeightCategory.SPORT),
+        mode="stash_first",
+        use_fixture=False,
+        ravelry_username="testuser",
+    )
+    mock_client = _make_client_mock(
+        library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        pattern_search(state)
+
+    for call in mock_client.search_patterns.call_args_list:
+        assert call.args[0] == "sport"
+
+
+def test_pattern_search_passes_pc_for_detected_garment() -> None:
+    """When a garment permalink is detected, pc= is passed to both search calls."""
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+        user_goal="I want a cardigan",
+        use_fixture=False,
+        ravelry_username="testuser",
+    )
+    mock_client = _make_client_mock(
+        library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        pattern_search(state)
+
+    for call in mock_client.search_patterns.call_args_list:
+        assert call.kwargs.get("pc") == "cardigan"
+
+
+def test_pattern_search_omits_pc_for_vague_goal() -> None:
+    """No garment in goal → pc is not passed; raw goal is used as query."""
+    state = _make_state(
+        filtered_stash=[_make_item(stash_id=1, yards_total=1000.0)],
+        user_goal="something cozy",
+        use_fixture=False,
+        ravelry_username="testuser",
+    )
+    mock_client = _make_client_mock(
+        library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        pattern_search(state)
+
+    for call in mock_client.search_patterns.call_args_list:
+        assert call.kwargs.get("pc") is None
+        assert call.kwargs.get("query") == "something cozy"
+
+
 # --- recommend ---
 
 

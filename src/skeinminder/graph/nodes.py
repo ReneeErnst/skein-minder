@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -25,6 +25,7 @@ from skeinminder.ravelry.normalizer import (
     SWEATER_YARDS_BY_WEIGHT,
     MatchScore,
     StashItem,
+    WeightCategory,
     fiber_suitability,
     find_weight_in_text,
     weight_match,
@@ -366,9 +367,24 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
         )
         return {"pattern_candidates": []}
 
-    best_item = max(filtered, key=lambda i: i.yards_total)
-    weight = best_item.weight_category.value
-    goal_query = _extract_garment_pc((state.get("user_goal") or "").lower())
+    goal_text = (state.get("user_goal") or "").lower()
+
+    # Weight priority: goal text → stash_filter → modal stash → heaviest item
+    weight_cat: WeightCategory | None = find_weight_in_text(goal_text)
+    if weight_cat is None and state.get("stash_filter") is not None:
+        weight_cat = state["stash_filter"].weight  # type: ignore[union-attr]
+    if weight_cat is None:
+        counts: Counter[WeightCategory] = Counter(
+            item.weight_category for item in filtered
+        )
+        if counts:
+            weight_cat = counts.most_common(1)[0][0]
+    if weight_cat is None:
+        weight_cat = max(filtered, key=lambda i: i.yards_total).weight_category
+    weight = weight_cat.value
+
+    garment_pc = _extract_garment_pc(goal_text)
+    query = None if garment_pc else state.get("user_goal")
     username = state["ravelry_username"]
 
     if state["use_fixture"]:
@@ -382,10 +398,10 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
     try:
         library_ids = client.get_library_pattern_ids(username)
         free_patterns = client.search_patterns(
-            weight, query=goal_query, availability="free"
+            weight, query=query, pc=garment_pc, availability="free"
         )
         popular_patterns = client.search_patterns(
-            weight, query=goal_query, sort="projects"
+            weight, query=query, pc=garment_pc, sort="projects"
         )
 
         # Combine, deduplicate, preserving first-seen order (free before popular)
