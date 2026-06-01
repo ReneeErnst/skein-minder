@@ -7,6 +7,7 @@ import pytest
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
+    _format_stash_for_prompt,
     assess_filter_quality,
     format_output,
     low_confidence_output,
@@ -465,6 +466,49 @@ def test_format_output_omits_pattern_line_when_fields_absent() -> None:
     output = result["formatted_output"]
     assert "Pattern:" not in output
     assert "Abstract Cardigan" in output
+
+
+def test_format_stash_for_prompt_groups_same_yarn_colorway() -> None:
+    items = [
+        StashItem(
+            stash_id=12345,
+            yarn_id=5,
+            brand="madelinetosh",
+            yarn_name="High Twist DK",
+            colorway="T'Challa",
+            weight_category=WeightCategory.DK,
+            fiber=["Wool"],
+            color_family=None,
+            skeins=1.0,
+            yards_per_skein=200.0,
+            yards_total=200.0,
+            grams_total=None,
+            notes=None,
+            project_quantity=ProjectQuantity.SWEATER,
+        ),
+        StashItem(
+            stash_id=12346,
+            yarn_id=5,
+            brand="madelinetosh",
+            yarn_name="High Twist DK",
+            colorway="T'Challa",
+            weight_category=WeightCategory.DK,
+            fiber=["Wool"],
+            color_family=None,
+            skeins=1.0,
+            yards_per_skein=200.0,
+            yards_total=200.0,
+            grams_total=None,
+            notes=None,
+            project_quantity=ProjectQuantity.SWEATER,
+        ),
+    ]
+    output = _format_stash_for_prompt(items)
+    lines = output.splitlines()
+    assert len(lines) == 1, f"Expected 1 line, got {len(lines)}: {output!r}"
+    assert "12345" in lines[0]
+    assert "12346" in lines[0]
+    assert "400" in lines[0]  # summed yardage
 
 
 # --- full graph integration (recommend mocked) ---

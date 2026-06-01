@@ -480,14 +480,40 @@ _PATTERN_RULE = (
 
 
 def _format_stash_for_prompt(items: list[StashItem]) -> str:
-    """Format filtered stash items as a numbered list for the LLM prompt."""
-    lines: list[str] = []
+    """Format filtered stash items as a numbered list for the LLM prompt.
+
+    Items with the same yarn_id and colorway are grouped into one line with
+    summed yardage and all stash IDs listed.
+    """
+    groups: dict[tuple[int, str | None], list[StashItem]] = defaultdict(list)
     for item in items:
-        fiber = ", ".join(item.fiber) if item.fiber else "unknown fiber"
-        colorway = f" ({item.colorway})" if item.colorway else ""
+        groups[(item.yarn_id, item.colorway)].append(item)
+
+    lines: list[str] = []
+    for group_items in groups.values():
+        first = group_items[0]
+        fiber = ", ".join(first.fiber) if first.fiber else "unknown fiber"
+        colorway = f" ({first.colorway})" if first.colorway else ""
+        total_yards = sum(i.yards_total for i in group_items)
+
+        if len(group_items) == 1:
+            id_str = f"ID {first.stash_id}"
+            yards_str = f"{total_yards:.0f} yds"
+        else:
+            ids = ", ".join(str(i.stash_id) for i in group_items)
+            id_str = f"IDs {ids}"
+            all_same = all(i.yards_total == first.yards_total for i in group_items)
+            if all_same:
+                yards_str = (
+                    f"{total_yards:.0f} yds"
+                    f" ({len(group_items)} × {first.yards_total:.0f} yds)"
+                )
+            else:
+                yards_str = f"{total_yards:.0f} yds"
+
         lines.append(
-            f"[ID {item.stash_id}] {item.brand} {item.yarn_name}{colorway}"
-            f" — {item.weight_category.value}, {item.yards_total:.0f} yds, {fiber}"
+            f"[{id_str}] {first.brand} {first.yarn_name}{colorway}"
+            f" — {first.weight_category.value}, {yards_str}, {fiber}"
         )
     return "\n".join(lines)
 
