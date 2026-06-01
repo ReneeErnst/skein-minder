@@ -111,7 +111,7 @@ def _make_pattern_summary(
         yardage_min=yardage_min,
         yardage_max=yardage_min + 200 if yardage_min else None,
         weight_name="Worsted",
-        tier=tier,  # type: ignore[arg-type]
+        tier=tier,
     )
 
 
@@ -306,7 +306,10 @@ def test_pattern_search_uses_goal_text_weight_over_stash_weight() -> None:
     mock_client = _make_client_mock(
         library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
     )
-    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+    with (
+        patch("skeinminder.config.get_ravelry_credentials", return_value=("u", "p")),
+        patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client),
+    ):
         pattern_search(state)
 
     for call in mock_client.search_patterns.call_args_list:
@@ -331,7 +334,10 @@ def test_pattern_search_uses_stash_filter_weight_in_stash_first_mode() -> None:
     mock_client = _make_client_mock(
         library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
     )
-    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+    with (
+        patch("skeinminder.config.get_ravelry_credentials", return_value=("u", "p")),
+        patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client),
+    ):
         pattern_search(state)
 
     for call in mock_client.search_patterns.call_args_list:
@@ -349,7 +355,10 @@ def test_pattern_search_passes_pc_for_detected_garment() -> None:
     mock_client = _make_client_mock(
         library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
     )
-    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+    with (
+        patch("skeinminder.config.get_ravelry_credentials", return_value=("u", "p")),
+        patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client),
+    ):
         pattern_search(state)
 
     for call in mock_client.search_patterns.call_args_list:
@@ -367,7 +376,10 @@ def test_pattern_search_omits_pc_for_vague_goal() -> None:
     mock_client = _make_client_mock(
         library_ids=set(), free_patterns=[], popular_patterns=[], detail_map={}
     )
-    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+    with (
+        patch("skeinminder.config.get_ravelry_credentials", return_value=("u", "p")),
+        patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client),
+    ):
         pattern_search(state)
 
     for call in mock_client.search_patterns.call_args_list:
@@ -491,7 +503,10 @@ def test_pattern_search_applies_weight_adjacency_filter() -> None:
             ),
         },
     )
-    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+    with (
+        patch("skeinminder.config.get_ravelry_credentials", return_value=("u", "p")),
+        patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client),
+    ):
         result = pattern_search(state)
 
     ids = {c.pattern_id for c in result["pattern_candidates"]}
