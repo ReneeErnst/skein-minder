@@ -164,3 +164,34 @@ def test_http_error_raises(status_code: int, exc_class: type[Exception]) -> None
         client.get_current_user()
     if isinstance(exc_info.value, RavelryAPIError):
         assert exc_info.value.status_code == status_code
+
+
+def test_search_patterns_passes_pc_param_when_set() -> None:
+    """When pc is provided, it must appear in the request query params."""
+    captured: list[httpx.Request] = []
+
+    class CapturingTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"patterns": []})
+
+    client = RavelryClient(username="u", password="p", transport=CapturingTransport())
+    client.search_patterns("worsted", pc="cardigan")
+    client.close()
+    assert len(captured) == 1
+    assert captured[0].url.params.get("pc") == "cardigan"
+
+
+def test_search_patterns_omits_pc_when_not_set() -> None:
+    """When pc is omitted, the request must not include a pc param."""
+    captured: list[httpx.Request] = []
+
+    class CapturingTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"patterns": []})
+
+    client = RavelryClient(username="u", password="p", transport=CapturingTransport())
+    client.search_patterns("worsted")
+    client.close()
+    assert "pc" not in captured[0].url.params

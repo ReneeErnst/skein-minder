@@ -191,6 +191,7 @@ class RavelryClient:
         availability: str | None = None,
         sort: str = "projects",
         page_size: int = 20,
+        pc: str | None = None,
     ) -> list[RawPattern]:
         """Search the Ravelry pattern database for knitting patterns by weight.
 
@@ -213,6 +214,8 @@ class RavelryClient:
             params["query"] = query
         if availability:
             params["availability"] = availability
+        if pc:
+            params["pc"] = pc
 
         try:
             data = self._get("/patterns/search.json", params=params)
