@@ -203,6 +203,7 @@ class RavelryClient:
             availability: Optional filter (e.g. "free").
             sort: Sort order — "projects" (default) or "best".
             page_size: Number of results per page. Defaults to 20.
+            pc: Ravelry pattern category permalink (e.g. "cardigan"). Omitted when None.
         """
         params: dict[str, str | int] = {
             "craft": "knitting",
