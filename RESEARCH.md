@@ -282,6 +282,16 @@ Note: `stash_list_full.json` still lacks `created_at` (built via `model_dump()` 
 
 ---
 
+**Demo completion order.** Phases 1–8 are merged. To reach a strong live demo for a technical audience, complete in this order:
+
+1. **Phase 9** — demo polish (`click.confirm` in `low_confidence_output` currently hangs the web UI on the low-confidence path — a hard blocker before any live demo; Phase 9 also adds mode echo-back, compile-once graph optimization, and stream TTL eviction)
+2. **Phase 10** — human approval (the product's core safety claim is today a stub: `/approve` and `/cancel` return 202 and do nothing; for a technically demanding audience this is the centerpiece feature, not a stretch goal)
+3. **Phase 12** — eval depth (a failing golden example with a visible Langfuse trace is stronger demo material than three examples that all pass)
+
+Phases 11 and 13–18 strengthen the product but are not required for a compelling technical demo.
+
+---
+
 ### Phase 9 — Demo polish
 
 Goal: two targeted improvements that unblock a clean live demo and lay groundwork for Phase 10. Both are self-contained.
@@ -295,10 +305,13 @@ The `recommend` node currently blocks 2–5 seconds before the user sees anythin
 `low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism is required before Phase 10 anyway. This also requires wiring a `MemorySaver` checkpointer into `build_graph()` — the same checkpointer Phase 10 depends on.
 
 Tasks:
-- Add streaming to `recommend` node; emit SSE token events so the frontend shows incremental output.
-- Replace `click.confirm()` in `low_confidence_output` with `interrupt()`.
+- Replace `click.confirm()` in `low_confidence_output` with `interrupt()` — this is the hard blocker; the web UI hangs indefinitely on the low-confidence path today.
 - Wire `MemorySaver` checkpointer into `build_graph()`; propagate `thread_id` through the CLI and web server.
 - Update tests for the interrupt-based low-confidence path.
+- Add streaming to `recommend` node; emit SSE token events so the frontend shows incremental output.
+- Echo the detected mode in the web UI before the graph continues (e.g., "Running in stash-first mode…"). One sentence of feedback that makes silent supervisor misclassification visible without adding latency. This is the cheapest fix for supervisor robustness and should be done before any embedding-based classifier work.
+- Compile the LangGraph graph once at server startup rather than per-request. `stream_graph_events()` currently calls `build_graph()` on every SSE request; move compilation into `create_app()` and pass the compiled graph through.
+- Wire TTL-based eviction for `_streams` (moved up from Phase 15 — this is a memory leak, not cleanup). Store a creation timestamp alongside each queue; a lightweight `asyncio` background task sweeps entries older than ~5 minutes. Prevents unbounded memory growth when clients call `POST /recommend` but never connect to `GET /stream/{id}`.
 
 ---
 
@@ -313,6 +326,8 @@ Goal: demonstrate safe agentic control before any write operations — the cente
 ### Phase 11 — Ravelry project write-back
 
 _Promoted from Phase 13. Depends on Phase 10 (approval gate). Full planning notes in the Implementation plan section below._
+
+_**Demo path: defer until after Phase 12.** Phase 11 completes the first end-to-end write loop but is not required for a compelling demo — Phase 10 (the approval gate itself) is the feature a technical audience wants to see. Implement Phase 12 (eval depth) before Phase 11._
 
 Goal: create or update a Ravelry project from an approved recommendation, completing the first end-to-end write loop.
 
@@ -850,7 +865,7 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 ### Phase 15 — Cleanup backlog
 
-_Revised 2026-05-31. Items #2 (streaming) and #5 (interrupt migration) were pulled forward to Phase 9. Items #1, #3, #7, and #8 (parallelism, async pagination, caching) are deferred to Phase 18 (production readiness) where they fit naturally._
+_Revised 2026-05-31. Streaming, interrupt migration, stream TTL eviction (a memory leak, not cleanup), and mode echo-back were all pulled forward to Phase 9. Parallelism, async pagination, and caching remain deferred to Phase 18 where they fit naturally._
 
 **1. Richer filter quality signals**
 
@@ -868,17 +883,24 @@ Recommended path, in order of complexity:
 
 1. Expand the keyword set with common paraphrases ("i've got some", "there's yarn in my stash", "i want to use"). Handles the majority of real inputs at zero latency cost — do this first regardless.
 2. Add a sentence-transformer embedding classifier (e.g., `all-MiniLM-L6-v2`, ~80MB) as a fallback when no keyword matches. Computes cosine similarity against a few prototype sentences per class. Runs in ~10–30ms on CPU with no network call or GPU requirement.
-3. Echo the detected mode to the user in the web UI and allow them to correct it before the graph runs — a simple confirmation step that catches misclassifications without adding latency.
+
+Option 3 (echo the detected mode and let the user correct it before the graph runs) was pulled forward to Phase 9 — it's the cheapest fix and should ship before anything else in this list.
 
 A full generative LLM call for this classification (~200–400ms API round-trip) is disproportionate for a binary intent detection task. A self-hosted small LLM on CPU is typically no faster than the API call and adds infrastructure overhead. The sentence-transformer approach is the right ceiling for this problem.
 
-Defer option 2 to Phase 16 if not blocking demo.
+Defer option 2 until the keyword expansion (option 1) is in place and still producing visible misclassifications.
 
-**3. Stream lifecycle management**
+**3. `pattern_search` weight selection**
 
-The `_streams: dict[str, asyncio.Queue]` in `server.py` is never explicitly evicted. If a client connects to `POST /recommend` but then disconnects before consuming `GET /stream/{id}`, the queue and its associated graph task are orphaned in memory. At low scale this is harmless, but it should be cleaned up before a multi-user deployment.
+The node derives the Ravelry query weight as `max(filtered_stash, key=lambda i: i.yards_total).weight_category`. When `project_first_filter` runs without a weight constraint, `filtered_stash` may span multiple weight categories; the search covers only the heaviest-yardage item's weight and misses patterns suited to lighter items. Better priority order: extract weight from the user's goal first; fall back to the modal weight across filtered items; then fall back to the heaviest-yardage item.
 
-Simple fix: store a creation timestamp alongside each queue. A lightweight background task sweeps entries older than a threshold (e.g., 5 minutes) and cancels any associated asyncio tasks. Alternatively, use a TTL-aware structure (e.g., `cachetools.TTLCache`) keyed by stream ID.
+**4. Hallucinated stash IDs fail silently**
+
+`format_output` calls `stash_by_id.get(sid)` and silently drops any ID the LLM invented. The eval suite's `assert_example()` catches this in tests, but production runs have no signal. Add `_logger.warning("LLM returned stash ID %d not in filtered_stash", sid)` — one line, materially improves debuggability.
+
+**5. `LAST_RUN_PATH` is a process-relative path**
+
+`LAST_RUN_PATH = Path("last_run.json")` resolves against whatever directory `uvicorn` starts in. Pin it relative to `__file__` or make it configurable via env var. Low priority until Phase 18 replaces it with a proper result store, but trivial to harden now.
 
 ---
 
