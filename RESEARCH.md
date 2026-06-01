@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18; Phase 8 complete — PR #12)_
+_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18; Phase 8 complete — PR #12; inserted Phase 9 pattern search quality, shifted former Phases 9–18 to Phases 10–19)_
 
 ## Working project name
 
@@ -284,17 +284,39 @@ Note: `stash_list_full.json` still lacks `created_at` (built via `model_dump()` 
 
 **Demo completion order.** Phases 1–8 are merged. To reach a strong live demo for a technical audience, complete in this order:
 
-1. **Phase 9** — demo polish (`click.confirm` in `low_confidence_output` currently hangs the web UI on the low-confidence path — a hard blocker before any live demo; Phase 9 also adds mode echo-back, compile-once graph optimization, and stream TTL eviction)
-2. **Phase 10** — human approval (the product's core safety claim is today a stub: `/approve` and `/cancel` return 202 and do nothing; for a technically demanding audience this is the centerpiece feature, not a stretch goal)
-3. **Phase 12** — eval depth (a failing golden example with a visible Langfuse trace is stronger demo material than three examples that all pass)
+1. **Phase 9** — pattern search quality (live runs currently return no pattern matches; this is the most visible gap in the current output and a quick win before demo polish)
+2. **Phase 10** — demo polish (`click.confirm` in `low_confidence_output` currently hangs the web UI on the low-confidence path — a hard blocker before any live demo)
+3. **Phase 11** — human approval (the product's core safety claim is today a stub: `/approve` and `/cancel` return 202 and do nothing)
+4. **Phase 13** — eval depth (a failing golden example with a visible Langfuse trace is stronger demo material than three examples that all pass)
 
-Phases 11 and 13–18 strengthen the product but are not required for a compelling technical demo.
+Phases 12 and 14–19 strengthen the product but are not required for a compelling technical demo.
 
 ---
 
-### Phase 9 — Demo polish
+### Phase 9 — Pattern search: category filtering and weight targeting
 
-Goal: two targeted improvements that unblock a clean live demo and lay groundwork for Phase 10. Both are self-contained.
+Goal: make pattern recommendations consistently appear in live runs by fixing the `pattern_search` node to use Ravelry's category taxonomy instead of free-text search, and correcting weight selection and candidate pre-filtering.
+
+Background: live testing showed a fingering-weight stash run returning 10 pattern candidates — all non-sweater garment types — and the LLM correctly declining to match any of them. Root cause: the search passes the full goal text as the free-text query with no category filter. `GET /pattern_categories/list.json` confirms a `pc=<permalink>` filter parameter exists (e.g., `pc=cardigan`, `pc=hat`, `pc=shawl-wrap`). See Phase 16 item 3 for the full keyword→permalink mapping and confirmed category IDs.
+
+Tasks:
+- Expand `_extract_garment_type` to cover the full common-knitting vocabulary — hat, sock, shawl, cowl, scarf, mittens, gloves, fingerless, slippers, headband, earwarmers, blanket, bag, tote, shrug, dress, and their common synonyms. Currently limited to 6 sweater-scale terms.
+- Return the Ravelry category permalink from the function (or add a parallel `_GARMENT_TO_PC` dict mapping the extracted keyword to its permalink). The permalink is what gets passed to the API.
+- In `pattern_search`, pass `pc=<permalink>` to `search_patterns` when a garment category is detected; fall back to free-text `query` with the goal string when no category is found (covers vague inputs like "something cozy" or "a gift").
+- Fix weight selection priority: (1) weight keyword found in the user's goal text via `find_weight_in_text`, (2) modal weight across filtered stash items, (3) heaviest-yardage item's weight (current behavior). This prevents the search from targeting the wrong weight when the stash spans multiple categories.
+- Pre-filter `pattern_candidates` to exclude patterns whose `weight_name` is more than one adjacent step from the dominant stash weight before writing to state. Library patterns span all weights and currently consume slots in the 10-candidate cap that belong to weight-matched patterns.
+
+Tests:
+- Parametrized unit tests for the expanded keyword → permalink mapping (one test per garment family is enough — not every synonym needs its own case).
+- Update `pattern_search` fixture tests to pass `pc` in the mock call assertions.
+- Tests for the weight selection priority fix (goal weight takes precedence over stash modal weight).
+- Tests for the weight-adjacency pre-filter (out-of-range patterns are excluded; adjacent-weight patterns are kept).
+
+---
+
+### Phase 10 — Demo polish
+
+Goal: two targeted improvements that unblock a clean live demo and lay groundwork for Phase 11. Both are self-contained.
 
 **Stream the `recommend` LLM response**
 
@@ -302,7 +324,7 @@ The `recommend` node currently blocks 2–5 seconds before the user sees anythin
 
 **`click.confirm` → LangGraph `interrupt()` (in `low_confidence_output`)**
 
-`low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism is required before Phase 10 anyway. This also requires wiring a `MemorySaver` checkpointer into `build_graph()` — the same checkpointer Phase 10 depends on.
+`low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism is required before Phase 11 anyway. This also requires wiring a `MemorySaver` checkpointer into `build_graph()` — the same checkpointer Phase 11 depends on.
 
 Tasks:
 - Replace `click.confirm()` in `low_confidence_output` with `interrupt()` — this is the hard blocker; the web UI hangs indefinitely on the low-confidence path today.
@@ -311,29 +333,29 @@ Tasks:
 - Add streaming to `recommend` node; emit SSE token events so the frontend shows incremental output.
 - Echo the detected mode in the web UI before the graph continues (e.g., "Running in stash-first mode…"). One sentence of feedback that makes silent supervisor misclassification visible without adding latency. This is the cheapest fix for supervisor robustness and should be done before any embedding-based classifier work.
 - Compile the LangGraph graph once at server startup rather than per-request. `stream_graph_events()` currently calls `build_graph()` on every SSE request; move compilation into `create_app()` and pass the compiled graph through.
-- Wire TTL-based eviction for `_streams` (moved up from Phase 15 — this is a memory leak, not cleanup). Store a creation timestamp alongside each queue; a lightweight `asyncio` background task sweeps entries older than ~5 minutes. Prevents unbounded memory growth when clients call `POST /recommend` but never connect to `GET /stream/{id}`.
+- Wire TTL-based eviction for `_streams` (moved up from Phase 16 — this is a memory leak, not cleanup). Store a creation timestamp alongside each queue; a lightweight `asyncio` background task sweeps entries older than ~5 minutes. Prevents unbounded memory growth when clients call `POST /recommend` but never connect to `GET /stream/{id}`.
 
 ---
 
-### Phase 10 — Human approval checkpoints
+### Phase 11 — Human approval checkpoints
 
-_Promoted from Phase 12. Phase 9 lays the required checkpointer groundwork. Full planning notes in the Implementation plan section below._
+_Promoted from Phase 12. Phase 10 lays the required checkpointer groundwork. Full planning notes in the Implementation plan section below._
 
 Goal: demonstrate safe agentic control before any write operations — the centerpiece feature for a technically demanding audience. Surfaces LangGraph checkpointing, the interrupt/resume pattern, and human-in-the-loop design together.
 
 ---
 
-### Phase 11 — Ravelry project write-back
+### Phase 12 — Ravelry project write-back
 
-_Promoted from Phase 13. Depends on Phase 10 (approval gate). Full planning notes in the Implementation plan section below._
+_Depends on Phase 11 (approval gate). Full planning notes in the Implementation plan section below._
 
-_**Demo path: defer until after Phase 12.** Phase 11 completes the first end-to-end write loop but is not required for a compelling demo — Phase 10 (the approval gate itself) is the feature a technical audience wants to see. Implement Phase 12 (eval depth) before Phase 11._
+_**Demo path: defer until after Phase 13.** Phase 12 completes the first end-to-end write loop but is not required for a compelling demo — Phase 11 (the approval gate itself) is the feature a technical audience wants to see. Implement Phase 13 (eval depth) before Phase 12._
 
 Goal: create or update a Ravelry project from an approved recommendation, completing the first end-to-end write loop.
 
 ---
 
-### Phase 12 — Eval depth pass
+### Phase 13 — Eval depth pass
 
 Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
 
@@ -345,9 +367,9 @@ Tasks:
 
 ---
 
-### Phase 13 — Guided UX Wizard (Modes 2 & 3)
+### Phase 14 — Guided UX Wizard (Modes 2 & 3)
 
-_Deferred from Phase 9. Product UX improvement — deprioritized in favor of Phase 10 (human approval) before the interview. Resume after Phase 12._
+_Product UX improvement — deprioritized in favor of Phase 11 (human approval) before the interview. Resume after Phase 13._
 
 Goal: Replace the single free-text input with a guided two-step wizard. Step 1 presents the three intent modes (Mode 1 rendered but disabled pending Phase 14). Modes 2 and 3 are fully implemented here. This removes the need for users to know supervisor trigger phrases and enables pre-graph stash disambiguation for Mode 3.
 
@@ -389,9 +411,9 @@ Pre-graph disambiguation:
 
 ---
 
-### Phase 14 — Allow Purchase Mode (Mode 1)
+### Phase 15 — Allow Purchase Mode (Mode 1)
 
-_Deferred from Phase 10. Depends on Phase 13 (Guided UX Wizard)._
+_Depends on Phase 14 (Guided UX Wizard)._
 
 Goal: Implement the "open to buying yarn" mode, completing the three-mode wizard from Phase 13. The LLM can recommend projects that require purchasing yarn, while still prioritizing stash matches when available.
 
@@ -422,6 +444,10 @@ These were found through live testing and should save time in future sessions.
 - Use "Personal Account Access" app type (not "Read Only"). The stash endpoint requires write-level auth even for reads. A read-only app returns: `403 Forbidden. This is not a read only API method.`
 - Basic Auth: `RAVELRY_USERNAME` = access key (alphanumeric API key), `RAVELRY_PASSWORD` = personal key. These are NOT the Ravelry login credentials.
 - Credentials do not auto-expire but should be regenerated periodically. Store in `.env` (gitignored).
+
+**Pattern category endpoint (confirmed 2026-05-31):**
+
+`GET /pattern_categories/list.json` returns the full Ravelry category tree — nested objects with `id`, `name`, `long_name`, `permalink`, and `children`. No auth required beyond Basic Auth. The `patterns/search` endpoint accepts `pc=<permalink>` to filter by category (e.g., `pc=cardigan`, `pc=hat`, `pc=shawl-wrap`). This is more precise than free-text query for garment-type targeting. See Phase 15 item 3 for the full keyword→permalink mapping.
 
 **Endpoint corrections (verified against official docs):**
 
@@ -523,7 +549,7 @@ The system supports three directions of use, presented to the user as a mode sel
   -> recommend project archetypes that fit that yarn
 ```
 
-Modes 2 and 3 are implemented in Phase 13. Mode 1 is implemented in Phase 14.
+Modes 2 and 3 are implemented in Phase 14. Mode 1 is implemented in Phase 15.
 
 The graph state must accommodate all three entry points. `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present. `allow_purchase` (Phase 14) controls whether Mode 1's looser constraint is active.
 
@@ -863,9 +889,9 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
-### Phase 15 — Cleanup backlog
+### Phase 16 — Cleanup backlog
 
-_Revised 2026-05-31. Streaming, interrupt migration, stream TTL eviction (a memory leak, not cleanup), and mode echo-back were all pulled forward to Phase 9. Parallelism, async pagination, and caching remain deferred to Phase 18 where they fit naturally._
+_Streaming, interrupt migration, stream TTL eviction (a memory leak, not cleanup), and mode echo-back were all pulled forward to Phase 10. Parallelism, async pagination, and caching remain deferred to Phase 19 where they fit naturally._
 
 **1. Richer filter quality signals**
 
@@ -884,29 +910,77 @@ Recommended path, in order of complexity:
 1. Expand the keyword set with common paraphrases ("i've got some", "there's yarn in my stash", "i want to use"). Handles the majority of real inputs at zero latency cost — do this first regardless.
 2. Add a sentence-transformer embedding classifier (e.g., `all-MiniLM-L6-v2`, ~80MB) as a fallback when no keyword matches. Computes cosine similarity against a few prototype sentences per class. Runs in ~10–30ms on CPU with no network call or GPU requirement.
 
-Option 3 (echo the detected mode and let the user correct it before the graph runs) was pulled forward to Phase 9 — it's the cheapest fix and should ship before anything else in this list.
+Option 3 (echo the detected mode and let the user correct it before the graph runs) was pulled forward to Phase 10 — it's the cheapest fix and should ship before anything else in this list.
 
 A full generative LLM call for this classification (~200–400ms API round-trip) is disproportionate for a binary intent detection task. A self-hosted small LLM on CPU is typically no faster than the API call and adds infrastructure overhead. The sentence-transformer approach is the right ceiling for this problem.
 
 Defer option 2 until the keyword expansion (option 1) is in place and still producing visible misclassifications.
 
-**3. `pattern_search` weight selection**
+**3. `pattern_search` — category-based filtering and candidate pre-filtering**
 
-The node derives the Ravelry query weight as `max(filtered_stash, key=lambda i: i.yards_total).weight_category`. When `project_first_filter` runs without a weight constraint, `filtered_stash` may span multiple weight categories; the search covers only the heaviest-yardage item's weight and misses patterns suited to lighter items. Better priority order: extract weight from the user's goal first; fall back to the modal weight across filtered items; then fall back to the heaviest-yardage item.
+Two related problems that together cause pattern fields to be null even when the LLM has good yarn candidates.
 
-**4. Hallucinated stash IDs fail silently**
+**Use `pc=<permalink>` instead of free-text query.** `GET /pattern_categories/list.json` returns the full Ravelry category tree with IDs and permalinks (confirmed via live API call, 2026-05-31). The `patterns/search` endpoint accepts a `pc` parameter keyed by permalink, which is far more precise than passing the user's goal string as a free-text query. Passing `pc=cardigan&weight=fingering` returns fingering cardigans; passing the full goal text returns whatever Ravelry's ranking algorithm surfaces (often shawls and socks, which dominate fingering weight popularity).
+
+The correct implementation: extract the garment type from the user's goal (already done by `_extract_garment_type`), map it to a Ravelry category permalink, and pass that as `pc=` to the search. Expand `_extract_garment_type` beyond the current six sweater-scale terms using Ravelry's actual taxonomy so the mapping is grounded in their vocabulary. Key mappings (from the live category tree):
+
+| User term(s) | Ravelry permalink | Category ID |
+|---|---|---|
+| cardigan | cardigan | 304 |
+| pullover, jumper | pullover | 306 |
+| sweater (generic) | sweater | 319 |
+| vest | vest | 310 |
+| coat, jacket | coat | 311 |
+| shrug, bolero | shrug | 305 |
+| hat, beanie, toque | hat | 411 |
+| beret, tam | beret-tam | 412 |
+| brimmed hat | brimmed | 415 |
+| earflap hat | earflap | 419 |
+| scarf | scarf | 339 |
+| cowl | cowl | 340 |
+| shawl, wrap | shawl-wrap | 350 |
+| poncho | poncho | 349 |
+| cape | cape | 348 |
+| mittens | mittens | 391 |
+| gloves | gloves | 394 |
+| fingerless | fingerless | 395 |
+| socks, sock | socks | 354 |
+| slippers | slippers | 363 |
+| legwarmers | legwarmers | 365 |
+| headband | headband | 403 |
+| earwarmers | earwarmers | 409 |
+| blanket, throw | blanket | 450 |
+| bag | bag | 372 |
+| tote | tote | 374 |
+| dress | dress | 325 |
+| skirt | skirt | 313 |
+| top | tops | 912 |
+
+When no garment type is detected, omit `pc` and fall back to free-text `query` with the goal string — this handles vague inputs ("something cozy", "a gift") acceptably.
+
+**Weight selection.** The node currently derives weight from the heaviest-yardage filtered stash item, which is wrong when `filtered_stash` spans multiple weight categories. Better priority order: (1) weight keyword found in the user's goal, (2) modal weight across filtered items, (3) heaviest-yardage item's weight.
+
+**Candidate pre-filtering.** Pre-filter `pattern_candidates` to keep only patterns whose `weight_name` is within one step of the dominant stash weight before the LLM sees them. Library patterns span all weights and currently consume slots in the 10-candidate cap that should go to weight-matched patterns.
+
+No retry loop is needed — `pc` filtering makes the initial candidates good enough for the LLM to pair.
+
+**4. Stash/yarn photos in result cards**
+
+The web UI card renderer already handles `photo_url` from matched patterns (a `first_photo` from `PatternSummary`). But result cards currently show no image when no pattern is matched, even though Ravelry stash entries and yarn bases have their own photos. The stash detail endpoint returns a `photos` array (noted in "Critical Ravelry API discoveries"); the list endpoint returns `first_photo` on the yarn object. Adding yarn photos to cards would make the no-pattern case more visually useful. Implementation path: expose `first_photo` on `RawYarn` (already on the list endpoint), carry it through `StashItem` → `_format_stash_for_prompt` payload → `_build_result_payload`, and render it as a fallback `<img>` in `_renderCards` when `photo_url` is null.
+
+**5. Hallucinated stash IDs fail silently**
 
 `format_output` calls `stash_by_id.get(sid)` and silently drops any ID the LLM invented. The eval suite's `assert_example()` catches this in tests, but production runs have no signal. Add `_logger.warning("LLM returned stash ID %d not in filtered_stash", sid)` — one line, materially improves debuggability.
 
-**5. `LAST_RUN_PATH` is a process-relative path**
+**6. `LAST_RUN_PATH` is a process-relative path**
 
 `LAST_RUN_PATH = Path("last_run.json")` resolves against whatever directory `uvicorn` starts in. Pin it relative to `__file__` or make it configurable via env var. Low priority until Phase 18 replaces it with a proper result store, but trivial to harden now.
 
 ---
 
-### Phase 10 — Human approval checkpoints
+### Phase 11 — Human approval checkpoints
 
-Goal: demonstrate safe agentic control before any write operations. Phase 9 lays the required groundwork — the `MemorySaver` checkpointer is wired and `low_confidence_output` is migrated to `interrupt()` there; Phase 10 extends the same pattern to the write-operation approval gate.
+Goal: demonstrate safe agentic control before any write operations. Phase 10 lays the required groundwork — the `MemorySaver` checkpointer is wired and `low_confidence_output` is migrated to `interrupt()` there; Phase 11 extends the same pattern to the write-operation approval gate.
 
 Tasks:
 - Add interrupt/checkpoint before any write operations.
@@ -917,11 +991,11 @@ Tasks:
 
 **LangGraph checkpointing:** `interrupt()` requires a checkpointer — LangGraph must be able to serialize and store the graph state at the pause point so it can resume after the user approves. For local/demo use, `MemorySaver` (in-process) is sufficient. For multi-user deployment, a `PostgresSaver` (or equivalent persistent checkpointer) is required, since the graph may pause across requests and the server may restart in between. The checkpointer also enables multi-turn conversation within a session ("show me simpler options" or "try worsted instead"), since prior state can be loaded and branched from. Wire the checkpointer when implementing `interrupt()` — retrofitting it later requires thread-ID management that's easier to add once at the start.
 
-**Web UI integration:** Phase 7 (UI-c) builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 10 wires the real `interrupt()` call — no frontend changes needed beyond what Phase 7 already delivers.
+**Web UI integration:** Phase 7 (UI-c) builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 11 wires the real `interrupt()` call — no frontend changes needed beyond what Phase 7 already delivers.
 
-Note: the low-confidence interactive prompt migrated in Phase 9 is a lightweight precursor to this — same interrupt/resume concept applied earlier in the graph.
+Note: the low-confidence interactive prompt migrated in Phase 10 is a lightweight precursor to this — same interrupt/resume concept applied earlier in the graph.
 
-### Phase 11 — Ravelry project write-back
+### Phase 12 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
@@ -935,7 +1009,7 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 12 — Eval depth pass
+### Phase 13 — Eval depth pass
 
 Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
 
@@ -945,23 +1019,23 @@ Tasks:
 - Verify the Langfuse dashboard is demo-ready: a recent run logged with visible token counts, cost per run, and judge scores on all three dimensions. Run `skeinminder eval` against live fixtures before the interview.
 - Confirm prompt caching is working: a second identical run should show `cache_read_input_tokens` in the `recommend` node's Langfuse span.
 
-### Phase 16 — External productivity integration (tentative)
+### Phase 17 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
-Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 11 (Ravelry write-back) before committing to Phase 16.
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 12 (Ravelry write-back) before committing to Phase 17.
 
-### Phase 17 — Documentation polish
+### Phase 18 — Documentation polish
 
 The demo UI itself (fixture mode, fallback, animated graph, result cards) is delivered by Phase UI. This phase covers remaining documentation artifacts: screenshots/GIFs for the README, an architecture diagram, sample prompt scripts, and a known-limitations section.
 
 ---
 
-### Phase 18 — Production deployment readiness
+### Phase 19 — Production deployment readiness
 
-Goal: make SkeinMinder safe to deploy for more than one user. The changes here are not about new features — they are about isolating users from each other, managing resources correctly, and handling credentials at production scale. Also incorporates the parallelism and caching work deferred from Phase 15.
+Goal: make SkeinMinder safe to deploy for more than one user. The changes here are not about new features — they are about isolating users from each other, managing resources correctly, and handling credentials at production scale. Also incorporates the parallelism and caching work deferred from Phase 16.
 
-**Dependency:** Phase 10 (human approval checkpoints) should complete first — specifically the LangGraph checkpointer work — since that decision directly shapes the persistence layer choices here.
+**Dependency:** Phase 11 (human approval checkpoints) should complete first — specifically the LangGraph checkpointer work — since that decision directly shapes the persistence layer choices here.
 
 **1. Multi-user session layer**
 
@@ -1033,6 +1107,8 @@ Minimum additions for a multi-user deployment:
 - Per-user rate limiting middleware
 
 The existing Docker Compose setup (currently Langfuse + Postgres) can be extended to include Redis. The Postgres instance already present for Langfuse can host the `runs` table and the LangGraph checkpointer tables in a separate schema.
+
+Note: items 7 and 8 are deferred to Phase 19.
 
 ---
 
@@ -1125,7 +1201,7 @@ Still open:
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
 7. Can project photos be uploaded via the API?
-8. **Multi-colorway project support:** The yarn group aggregation feature (Phase 9 fix) groups stash entries by `(yarn_id, colorway)` — different colorways of the same yarn are treated as independent inventory. A future enhancement should consider multi-color projects: a striped sweater using three colorways of the same base yarn, or a colorblock cardigan using two coordinating skeins. This requires both a UX mechanism for the user to declare intent and a recommendation schema that can express "use yarn A for the body, yarn B for the yoke."
+8. **Multi-colorway project support:** The yarn group aggregation feature (merged in yarn-group PR) groups stash entries by `(yarn_id, colorway)` — different colorways of the same yarn are treated as independent inventory. A future enhancement should consider multi-color projects: a striped sweater using three colorways of the same base yarn, or a colorblock cardigan using two coordinating skeins. This requires both a UX mechanism for the user to declare intent and a recommendation schema that can express "use yarn A for the body, yarn B for the yoke."
 
 Answered (2026-05-16 — full API docs captured in `docs/ravelry-api/`):
 
