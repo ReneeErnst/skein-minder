@@ -303,7 +303,7 @@ _FIBER_RULES: dict[str, dict[str, MatchScore]] = {
         "socks": MatchScore.ADJACENT,
         "baby": MatchScore.ADJACENT,
         "cables": MatchScore.EXACT,
-        "shawl": MatchScore.EXACT,
+        "shawl-wrap": MatchScore.EXACT,
     },
     "superwash": {
         "baby": MatchScore.EXACT,
@@ -315,7 +315,7 @@ _FIBER_RULES: dict[str, dict[str, MatchScore]] = {
     "alpaca": {
         "cardigan": MatchScore.EXACT,
         "sweater": MatchScore.EXACT,
-        "shawl": MatchScore.EXACT,
+        "shawl-wrap": MatchScore.EXACT,
         "cables": MatchScore.ADJACENT,
         "socks": MatchScore.MISMATCH,
     },
@@ -334,7 +334,7 @@ _FIBER_RULES: dict[str, dict[str, MatchScore]] = {
         "socks": MatchScore.ADJACENT,
     },
     "silk": {
-        "shawl": MatchScore.EXACT,
+        "shawl-wrap": MatchScore.EXACT,
         "cardigan": MatchScore.ADJACENT,
         "cables": MatchScore.MISMATCH,
         "socks": MatchScore.MISMATCH,
