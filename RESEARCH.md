@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15)_
+_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18)_
 
 ## Working project name
 
@@ -228,7 +228,7 @@ src/skeinminder/web/
                  #   POST /recommend → stream_id (non-blocking)
                  #   GET /stream/{id} → SSE
                  #   GET /replay → last_run.json fallback
-                 #   POST /approve/{id}, POST /cancel/{id} → Phase 12 stubs
+                 #   POST /approve/{id}, POST /cancel/{id} → Phase 10 stubs
   static/
     index.html   # three-phase structure (phase-input / phase-running / phase-results)
     app.js       # SSE consumer, phase controller, card renderer, Load last run
@@ -279,11 +279,61 @@ Tasks:
 
 ---
 
-### Phase 9 — Guided UX Wizard (Modes 2 & 3)
+### Phase 9 — Demo polish
 
-Goal: Replace the single free-text input with a guided two-step wizard. Step 1 presents the three intent modes (Mode 1 rendered but disabled pending Phase 10). Modes 2 and 3 are fully implemented here. This removes the need for users to know supervisor trigger phrases and enables pre-graph stash disambiguation for Mode 3.
+Goal: two targeted improvements that unblock a clean live demo and lay groundwork for Phase 10. Both are self-contained.
 
-**Dependency:** Phase 8 (stash date filtering) should complete first so that `added_date` is available on `StashItem` and can be included in the `GET /stash` response. If Phase 9 ships before Phase 8, the `/stash` endpoint omits `added_date` and the Mode 3 search UI cannot display yarn age; the field can be added in Phase 8 without breaking Phase 9's other work.
+**Stream the `recommend` LLM response**
+
+The `recommend` node currently blocks 2–5 seconds before the user sees anything. The Anthropic API supports streaming; adding it gives visible progress immediately. The SSE infrastructure in `events.py` already carries the result payload — the change is in how `recommend` produces tokens, not how the frontend receives them. This is the highest-impact UX improvement relative to effort in the backlog.
+
+**`click.confirm` → LangGraph `interrupt()` (in `low_confidence_output`)**
+
+`low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism is required before Phase 10 anyway. This also requires wiring a `MemorySaver` checkpointer into `build_graph()` — the same checkpointer Phase 10 depends on.
+
+Tasks:
+- Add streaming to `recommend` node; emit SSE token events so the frontend shows incremental output.
+- Replace `click.confirm()` in `low_confidence_output` with `interrupt()`.
+- Wire `MemorySaver` checkpointer into `build_graph()`; propagate `thread_id` through the CLI and web server.
+- Update tests for the interrupt-based low-confidence path.
+
+---
+
+### Phase 10 — Human approval checkpoints
+
+_Promoted from Phase 12. Phase 9 lays the required checkpointer groundwork. Full planning notes in the Implementation plan section below._
+
+Goal: demonstrate safe agentic control before any write operations — the centerpiece feature for a technically demanding audience. Surfaces LangGraph checkpointing, the interrupt/resume pattern, and human-in-the-loop design together.
+
+---
+
+### Phase 11 — Ravelry project write-back
+
+_Promoted from Phase 13. Depends on Phase 10 (approval gate). Full planning notes in the Implementation plan section below._
+
+Goal: create or update a Ravelry project from an approved recommendation, completing the first end-to-end write loop.
+
+---
+
+### Phase 12 — Eval depth pass
+
+Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
+
+Tasks:
+- Add one failing or edge-case golden example: an input that fails a deterministic assertion (e.g., hallucinated stash ID) or scores below threshold on the LLM-as-judge. Document why it fails and what the graph state shows.
+- Add a third judge dimension: **pattern relevance**. Now that Phase 6 ships real pattern links, the judge can score whether the recommended pattern is a plausible fit for the stash yarn, not just whether the reasoning is coherent.
+- Verify the Langfuse dashboard is demo-ready: a recent run logged with visible token counts, cost per run, and judge scores on all three dimensions. Run `skeinminder eval` against live fixtures before the interview.
+- Confirm prompt caching is working: a second identical run should show `cache_read_input_tokens` in the `recommend` node's Langfuse span.
+
+---
+
+### Phase 13 — Guided UX Wizard (Modes 2 & 3)
+
+_Deferred from Phase 9. Product UX improvement — deprioritized in favor of Phase 10 (human approval) before the interview. Resume after Phase 12._
+
+Goal: Replace the single free-text input with a guided two-step wizard. Step 1 presents the three intent modes (Mode 1 rendered but disabled pending Phase 14). Modes 2 and 3 are fully implemented here. This removes the need for users to know supervisor trigger phrases and enables pre-graph stash disambiguation for Mode 3.
+
+**Dependency:** Phase 8 (stash date filtering) should complete first so that `added_date` is available on `StashItem` and can be included in the `GET /stash` response. If Phase 13 ships before Phase 8, the `/stash` endpoint omits `added_date` and the Mode 3 search UI cannot display yarn age; the field can be added in Phase 8 without breaking Phase 13's other work.
 
 **Step 1 — Mode selector:**
 
@@ -321,9 +371,11 @@ Pre-graph disambiguation:
 
 ---
 
-### Phase 10 — Allow Purchase Mode (Mode 1)
+### Phase 14 — Allow Purchase Mode (Mode 1)
 
-Goal: Implement the "open to buying yarn" mode, completing the three-mode wizard from Phase 9. The LLM can recommend projects that require purchasing yarn, while still prioritizing stash matches when available.
+_Deferred from Phase 10. Depends on Phase 13 (Guided UX Wizard)._
+
+Goal: Implement the "open to buying yarn" mode, completing the three-mode wizard from Phase 13. The LLM can recommend projects that require purchasing yarn, while still prioritizing stash matches when available.
 
 **UX changes:**
 - Enable Mode 1 card in the wizard (remove "Coming soon" state).
@@ -453,9 +505,9 @@ The system supports three directions of use, presented to the user as a mode sel
   -> recommend project archetypes that fit that yarn
 ```
 
-Modes 2 and 3 are implemented in Phase 9. Mode 1 is implemented in Phase 10.
+Modes 2 and 3 are implemented in Phase 13. Mode 1 is implemented in Phase 14.
 
-The graph state must accommodate all three entry points. `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present. `allow_purchase` (Phase 10) controls whether Mode 1's looser constraint is active.
+The graph state must accommodate all three entry points. `user_goal` (free-text goal) and `stash_filter` (weight, color, specific item, or yardage range) are both optional; at least one must be present. `allow_purchase` (Phase 14) controls whether Mode 1's looser constraint is active.
 
 ### Core workflow
 
@@ -763,12 +815,12 @@ Broken into three subphases:
 
 **Phase UI-b — Frontend structure + graph animation:** Three-phase page (input → running → results), vis-network node animation driven by SSE events, status text per node in plain English. UI-a and UI-b can run as parallel subagents — the SSE event schema is the shared contract.
 
-**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 12 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 12).
+**Phase UI-c — Visual polish + result cards:** Ravelry-inspired styling, recommendation cards with pattern photos and yarn tags, Phase 10 approval modal (rendered when `node_awaiting_approval` SSE event arrives; wired to real graph interrupt in Phase 10).
 
 **SSE event schema (the UI-a/UI-b contract):**
 ```
 node_start / node_complete — drives graph animation
-node_awaiting_approval     — Phase 9 seam (defined now, emitted in Phase 9)
+node_awaiting_approval     — Phase 10 seam (defined now, emitted in Phase 10)
 result                     — full recommendation payload, auto-saved
 error                      — renders error state
 ```
@@ -793,28 +845,11 @@ Focused pass on tracing quality before Phase 6 adds more nodes.
 
 5. **Export script date filtering** — `--since` flag not yet added. Low priority; deferred.
 
-### Phase 11 — Performance and cleanup backlog
+### Phase 15 — Cleanup backlog
 
-_Identified during design review on 2026-05-31. These are not blocking Phase 7 Web UI but should land before Phase 12 adds human-in-the-loop complexity. Can run in parallel with Phase 7._
+_Revised 2026-05-31. Items #2 (streaming) and #5 (interrupt migration) were pulled forward to Phase 9. Items #1, #3, #7, and #8 (parallelism, async pagination, caching) are deferred to Phase 18 (production readiness) where they fit naturally._
 
-**1. Parallel pattern search and stash filtering (LangGraph fan-out)**
-
-The highest-leverage parallelism opportunity in the graph. Pattern search and stash filtering are independent operations — pattern search needs the goal/weight from `supervisor`, stash filtering needs the stash — and can run in parallel via LangGraph's fan-out support. After `supervisor` resolves, two branches can execute concurrently:
-
-- `project_first_filter` or `stash_first_filter` (~10ms)
-- `pattern_search` node (~500ms–1s: Ravelry pattern search + detail fetch)
-
-Both results join before `assess_filter_quality`. This eliminates pattern lookup latency from the user's perspective without affecting the LLM call. Without parallelism, pattern search would add ~500ms–1s of sequential wait time before the already-dominant LLM call.
-
-**2. Stream the `recommend` LLM response**
-
-The `recommend` node blocks for 2–5 seconds before the user sees anything. The Anthropic API supports streaming; adding it gives visible progress immediately and is the fastest UX improvement available without structural changes to the graph.
-
-**3. Async Ravelry pagination**
-
-`get_stash_list()` and `get_library_pattern_ids()` paginate sequentially. For a 1,300-item stash (13 pages), switching from `httpx.Client` to `httpx.AsyncClient` with `asyncio.gather()` could reduce stash load time by 70–80% on live runs. Requires converting `RavelryClient` to async or adding an async variant. The pattern search path (`search_patterns` + `get_library_pattern_ids`) would benefit from the same treatment, since those two calls are also independent and currently would run serially.
-
-**4. Richer filter quality signals**
+**1. Richer filter quality signals**
 
 `assess_filter_quality` checks only two conditions: empty filtered stash, or sweater goal with <500 yards. Additional signals worth adding:
 
@@ -822,33 +857,46 @@ The `recommend` node blocks for 2–5 seconds before the user sees anything. The
 - No candidates match the fiber suitability score for the goal garment type (all MISMATCH)
 - Pattern candidates found but no stash yarn within one weight step of any pattern's required weight
 
-**5. `click.confirm` → LangGraph `interrupt()`**
+**2. Supervisor robustness**
 
-`low_confidence_output` uses `click.confirm()` — a blocking interactive call inside a graph node. This works for the CLI but is incompatible with non-interactive contexts (tests that hit the low-confidence path, future web integration). Migrating to LangGraph's `interrupt()` mechanism is required before Phase 12 anyway; doing it here cleans up the code before more complexity lands.
+The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified.
 
-**6. Supervisor robustness**
+Recommended path, in order of complexity:
 
-The `supervisor` node classifies input using hardcoded phrase-matching ("use my", "i have", etc.). Natural-language inputs outside this vocabulary are silently misclassified. Options: add a small LLM classification call (adds ~200–400ms but handles arbitrary phrasing), or echo the detected mode to the user and ask for confirmation before proceeding. Defer to Phase 12 if not blocking demo.
+1. Expand the keyword set with common paraphrases ("i've got some", "there's yarn in my stash", "i want to use"). Handles the majority of real inputs at zero latency cost — do this first regardless.
+2. Add a sentence-transformer embedding classifier (e.g., `all-MiniLM-L6-v2`, ~80MB) as a fallback when no keyword matches. Computes cosine similarity against a few prototype sentences per class. Runs in ~10–30ms on CPU with no network call or GPU requirement.
+3. Echo the detected mode to the user in the web UI and allow them to correct it before the graph runs — a simple confirmation step that catches misclassifications without adding latency.
+
+A full generative LLM call for this classification (~200–400ms API round-trip) is disproportionate for a binary intent detection task. A self-hosted small LLM on CPU is typically no faster than the API call and adds infrastructure overhead. The sentence-transformer approach is the right ceiling for this problem.
+
+Defer option 2 to Phase 16 if not blocking demo.
+
+**3. Stream lifecycle management**
+
+The `_streams: dict[str, asyncio.Queue]` in `server.py` is never explicitly evicted. If a client connects to `POST /recommend` but then disconnects before consuming `GET /stream/{id}`, the queue and its associated graph task are orphaned in memory. At low scale this is harmless, but it should be cleaned up before a multi-user deployment.
+
+Simple fix: store a creation timestamp alongside each queue. A lightweight background task sweeps entries older than a threshold (e.g., 5 minutes) and cancels any associated asyncio tasks. Alternatively, use a TTL-aware structure (e.g., `cachetools.TTLCache`) keyed by stream ID.
 
 ---
 
-### Phase 12 — Human approval checkpoints
+### Phase 10 — Human approval checkpoints
 
-Goal: demonstrate safe agentic control before any write operations.
+Goal: demonstrate safe agentic control before any write operations. Phase 9 lays the required groundwork — the `MemorySaver` checkpointer is wired and `low_confidence_output` is migrated to `interrupt()` there; Phase 10 extends the same pattern to the write-operation approval gate.
 
 Tasks:
-- Replace `click.confirm()` in `low_confidence_output` with LangGraph `interrupt()`.
 - Add interrupt/checkpoint before any write operations.
 - Show draft payload before side effects.
 - Require explicit approval to continue.
 - Store graph thread state.
 - Add rejection/edit path.
 
-**Web UI integration:** Phase UI-c builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 12 wires the real `interrupt()` call — no frontend changes needed beyond what Phase UI-c already delivers.
+**LangGraph checkpointing:** `interrupt()` requires a checkpointer — LangGraph must be able to serialize and store the graph state at the pause point so it can resume after the user approves. For local/demo use, `MemorySaver` (in-process) is sufficient. For multi-user deployment, a `PostgresSaver` (or equivalent persistent checkpointer) is required, since the graph may pause across requests and the server may restart in between. The checkpointer also enables multi-turn conversation within a session ("show me simpler options" or "try worsted instead"), since prior state can be loaded and branched from. Wire the checkpointer when implementing `interrupt()` — retrofitting it later requires thread-ID management that's easier to add once at the start.
 
-Note: the low-confidence interactive prompt added in Phase 3b is a lightweight precursor to this — same concept applied earlier in the graph.
+**Web UI integration:** Phase 7 (UI-c) builds the approval modal in the browser (triggered by `node_awaiting_approval` SSE event) and the `/approve` + `/cancel` endpoints in the backend. Phase 10 wires the real `interrupt()` call — no frontend changes needed beyond what Phase 7 already delivers.
 
-### Phase 13 — Ravelry project write-back
+Note: the low-confidence interactive prompt migrated in Phase 9 is a lightweight precursor to this — same interrupt/resume concept applied earlier in the graph.
+
+### Phase 11 — Ravelry project write-back
 
 Goal: create or update a Ravelry project from an approved recommendation.
 
@@ -862,15 +910,104 @@ Tasks:
 
 API reference: `docs/ravelry-api/api-reference-skeinminder.md` covers project endpoints.
 
-### Phase 14 — External productivity integration (tentative)
+### Phase 12 — Eval depth pass
+
+Goal: strengthen the eval suite for a technically demanding audience. Walking through a failing example — and showing how the Langfuse trace illuminates the failure — is a stronger demo than three examples that all score well.
+
+Tasks:
+- Add one failing or edge-case golden example: an input that fails a deterministic assertion (e.g., hallucinated stash ID) or scores below threshold on the LLM-as-judge. Document why it fails and what the graph state reveals in the Langfuse trace.
+- Add a third judge dimension: **pattern relevance**. Now that Phase 6 ships real pattern links, the judge can score whether the recommended pattern is a plausible fit for the stash yarn — not just whether the reasoning is coherent.
+- Verify the Langfuse dashboard is demo-ready: a recent run logged with visible token counts, cost per run, and judge scores on all three dimensions. Run `skeinminder eval` against live fixtures before the interview.
+- Confirm prompt caching is working: a second identical run should show `cache_read_input_tokens` in the `recommend` node's Langfuse span.
+
+### Phase 16 — External productivity integration (tentative)
 
 Google Calendar first (value is easy to demo). Schedule swatching and milestones.
 
-Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 10 before committing to Phase 11.
+Note: Ravelry projects support start dates natively, which may make calendar integration unnecessary. Revisit after Phase 11 (Ravelry write-back) before committing to Phase 16.
 
-### Phase 15 — Documentation polish
+### Phase 17 — Documentation polish
 
 The demo UI itself (fixture mode, fallback, animated graph, result cards) is delivered by Phase UI. This phase covers remaining documentation artifacts: screenshots/GIFs for the README, an architecture diagram, sample prompt scripts, and a known-limitations section.
+
+---
+
+### Phase 18 — Production deployment readiness
+
+Goal: make SkeinMinder safe to deploy for more than one user. The changes here are not about new features — they are about isolating users from each other, managing resources correctly, and handling credentials at production scale. Also incorporates the parallelism and caching work deferred from Phase 15.
+
+**Dependency:** Phase 10 (human approval checkpoints) should complete first — specifically the LangGraph checkpointer work — since that decision directly shapes the persistence layer choices here.
+
+**1. Multi-user session layer**
+
+Currently the app is hard-wired for one user: credentials come from env vars, one stash is loaded at startup, and `ravelry_username` is a single string in `GraphState`. To serve multiple users:
+
+- Each request must carry its own Ravelry credentials. The most straightforward path for a web deployment is an OAuth flow using Ravelry's OAuth 2 support; Basic Auth with per-user credential storage is an alternative if OAuth is not available.
+- `create_app()` can no longer take a single `stash` argument. Stash loading moves from startup into the request handler, guarded by the per-user TTL cache (item 5 below).
+- `ravelry_username` in `GraphState` must reflect the requesting user, not a process-level constant.
+
+**2. Per-user stash isolation**
+
+Once the session layer exists, the stash cache (item 5 below) becomes the primary data store for user state between requests. Key requirements:
+
+- Cache entries must be keyed by authenticated user identity, not just the username string.
+- Strip `notes` from cached stash items — this field can contain personal context (gift notes, purchase history, prices paid) and should not persist beyond the lifetime needed for a single recommendation run.
+- Normalized stash size at scale: ~1–2MB per user. At 1,000 concurrent users that is 1–2GB in Redis — manageable. The normalized form is already compact since `StashItem` discards most `RawStashItem` fields.
+
+**3. Run result persistence**
+
+`last_run.json` is a single file written to the working directory. It is not user-scoped, not safe for concurrent writes, and disappears on redeploy. Replace it with a proper result store:
+
+- A `runs` table in Postgres (or similar) keyed by `(user_id, run_id)` with a TTL or explicit cleanup policy.
+- The `/replay` endpoint queries the store by authenticated user rather than reading a hardcoded file path.
+- Consider whether run history (more than just the last run) is useful — users may want to compare recommendations across sessions.
+
+**4. Cost and rate limit considerations**
+
+At scale, per-request Ravelry API calls are the primary cost risk, not LLM calls. A single recommendation run makes up to four Ravelry API calls (items 5 and 6 below address caching). Beyond caching:
+
+- Monitor Ravelry API rate limits (open question 5 — limits are not documented, test empirically). Add per-user rate limiting at the application layer before Ravelry enforces it.
+- LLM cost per run is low using Haiku (~$0.01 or less). If Sonnet is ever used for better recommendation quality, cost rises to ~$0.05–0.10 per run — still acceptable for a consumer app but worth tracking via Langfuse cost reporting.
+- Prompt caching (`cache_control: ephemeral`) is already in place on the system prompt. Make sure the system prompt is stable across requests for the same user — any per-user content injected into the system prompt breaks cache hits.
+
+**5. Normalized stash caching**
+
+The stash is currently fetched from Ravelry and normalized on every process start. For a web service, this means every cold start hits the API. A simple TTL cache (15–30 minutes, keyed by Ravelry username) eliminates repeated fetches within a session and is negligible in storage: a normalized stash of 1,300 items serializes to roughly 1–2MB of JSON — the normalized form is smaller than the raw API response because `StashItem` discards most `RawStashItem` fields.
+
+Implementation notes:
+- In-memory dict cache is sufficient for a single-process server; Redis if multi-process.
+- Cache the normalized `list[StashItem]`, not the raw API response. Normalization is cheap but the raw response is larger.
+- Strip the `notes` field before caching — it can contain PII (purchase history, gift notes, personal context) and is not used by any graph node. The same principle that governs `sanitizer.py` for fixtures applies here.
+- Add a "Refresh stash" button in the web UI as a manual invalidation escape hatch. Ravelry has no push events (no webhooks), so TTL expiry is the only automatic mechanism.
+
+**6. Pattern search caching**
+
+`pattern_search` makes four Ravelry API calls per run (library IDs, free search, popular search, batch detail). The free and popular searches are keyed by weight and goal keyword — stable across users and requests within a short window. A shared cache (Redis, short TTL of 5–15 minutes) keyed by `(weight, query, availability, sort)` would substantially reduce Ravelry API call volume when multiple users make similar requests.
+
+Library pattern IDs are user-specific and should not be shared across users; cache them per username alongside the stash cache.
+
+**7. Parallel pattern search and stash filtering (LangGraph fan-out)**
+
+The highest-leverage parallelism opportunity in the graph. Pattern search and stash filtering are independent operations — pattern search needs the goal/weight from `supervisor`, stash filtering needs the stash — and can run in parallel via LangGraph's fan-out support. After `supervisor` resolves, two branches can execute concurrently:
+
+- `project_first_filter` or `stash_first_filter` (~10ms)
+- `pattern_search` node (~500ms–1s: Ravelry pattern search + detail fetch)
+
+Both results join before `assess_filter_quality`. This eliminates pattern lookup latency from the user's perspective without affecting the LLM call.
+
+**8. Async Ravelry pagination**
+
+`get_stash_list()` and `get_library_pattern_ids()` paginate sequentially. For a 1,300-item stash (13 pages), switching from `httpx.Client` to `httpx.AsyncClient` with `asyncio.gather()` could reduce stash load time by 70–80% on live runs. Requires converting `RavelryClient` to async or adding an async variant. The pattern search path (`search_patterns` + `get_library_pattern_ids`) would also benefit, since those two calls are independent and currently run serially.
+
+**9. Infrastructure summary**
+
+Minimum additions for a multi-user deployment:
+- Redis (stash cache + pattern search cache + stream TTL eviction)
+- Postgres (run results, LangGraph `PostgresSaver` checkpointer)
+- Session/auth layer (OAuth or equivalent)
+- Per-user rate limiting middleware
+
+The existing Docker Compose setup (currently Langfuse + Postgres) can be extended to include Redis. The Postgres instance already present for Langfuse can host the `runs` table and the LangGraph checkpointer tables in a separate schema.
 
 ---
 
