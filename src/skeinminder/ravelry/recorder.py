@@ -20,7 +20,7 @@ from typing import Any
 
 from skeinminder.config import get_ravelry_credentials
 from skeinminder.ravelry.client import RavelryClient
-from skeinminder.ravelry.models import RawStashItem
+from skeinminder.ravelry.models import RawStashItem, RawYarnBatchResponse
 from skeinminder.ravelry.sanitizer import (
     sanitize_current_user,
     sanitize_stash_detail_sample,
@@ -78,6 +78,25 @@ def record(raw: bool = False) -> None:
         _write(FIXTURES_DIR / "stash_detail_sample.json", sanitized_details)
         print(f"    → saved {len(sanitized_details)} detail records")
 
+        # yarn details (fiber data)
+        unique_yarn_ids = list(
+            {item.yarn.id for item in stash_items if item.yarn is not None}
+        )
+        print(f"  GET /yarns.json for {len(unique_yarn_ids)} unique yarns ...")
+        try:
+            yarn_data = client._get(
+                "/yarns.json",
+                params={"ids": " ".join(str(i) for i in unique_yarn_ids)},
+            )
+            _write(FIXTURES_DIR / "yarn_details.json", yarn_data)
+            parsed = RawYarnBatchResponse.model_validate(yarn_data)
+            fibers_found = sum(1 for y in parsed.yarns if y.yarn_fibers)
+            print(
+                f"    → saved {len(parsed.yarns)} yarns, {fibers_found} with fiber data"
+            )
+        except Exception as exc:
+            print(f"    → yarn details fetch failed: {exc} (skipping)")
+
         if raw:
             _record_raw(client, ravelry_username)
 
@@ -130,6 +149,21 @@ def _record_raw(client: RavelryClient, username: str) -> None:
             detail_fields = set(detail_stash.keys())
             print(f"\nDetail format fields: {sorted(detail_fields)}")
             print(f"  Dropped by model:   {sorted(detail_fields - model_fields)}")
+
+    # Raw yarn details (small sample for field inspection)
+    if list_items:
+        raw_yarn_ids = [
+            item["yarn"]["id"]
+            for item in list_items[:SAMPLE_SIZE]
+            if isinstance(item, dict) and item.get("yarn") and item["yarn"].get("id")
+        ]
+        if raw_yarn_ids:
+            raw_yarn_resp = client._get(
+                "/yarns.json",
+                params={"ids": " ".join(str(i) for i in raw_yarn_ids)},
+            )
+            _write(RAW_DIR / "yarn_details_raw.json", raw_yarn_resp)
+            print(f"  → raw yarn details for {len(raw_yarn_ids)} yarns")
 
 
 def _write(path: Path, data: object) -> None:
