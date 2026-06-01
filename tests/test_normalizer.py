@@ -148,6 +148,7 @@ def test_project_quantity_from_yards(
 def test_stash_item_construction() -> None:
     item = StashItem(
         stash_id=10001,
+        yarn_id=10001,
         brand="Sample Brand",
         yarn_name="Worsted Wool",
         colorway="Moss",
@@ -317,3 +318,9 @@ def test_normalize_stash_item_added_date_none_when_no_created_at() -> None:
     raw = _make_raw_item()
     item = normalize_stash_item(raw)
     assert item.added_date is None
+
+
+def test_normalize_stash_item_sets_yarn_id() -> None:
+    raw = _make_raw_item(yarn_id=42)
+    item = normalize_stash_item(raw)
+    assert item.yarn_id == 42

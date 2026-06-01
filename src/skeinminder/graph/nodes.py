@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -21,8 +22,8 @@ from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.client import RavelryClient
 from skeinminder.ravelry.fixture_transport import FixtureTransport
 from skeinminder.ravelry.normalizer import (
+    SWEATER_YARDS_BY_WEIGHT,
     MatchScore,
-    ProjectQuantity,
     StashItem,
     fiber_suitability,
     find_weight_in_text,
@@ -46,6 +47,14 @@ _SWEATER_GARMENTS: list[str] = [
 _TIER_ORDER: dict[str, int] = {"library": 0, "free": 1, "popular": 2}
 
 _DATE_SORT_SENTINEL = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _group_yards(items: list[StashItem]) -> dict[tuple[int, str | None], float]:
+    """Map (yarn_id, colorway) → total yards across all items in the list."""
+    totals: dict[tuple[int, str | None], float] = defaultdict(float)
+    for item in items:
+        totals[(item.yarn_id, item.colorway)] += item.yards_total
+    return dict(totals)
 
 
 def _date_sort_key(item: StashItem) -> datetime:
@@ -152,9 +161,10 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash for project-first mode, capped at 20 items.
 
     Excludes: weaving yarn; weight mismatches when a weight keyword is present;
-    non-sweater-quantity items when a sweater-scale garment is mentioned;
-    fiber mismatches for the detected garment type. Sorts by added_date ascending
-    (oldest first) if oldest_first is True, otherwise by yards_total descending.
+    fiber mismatches for the detected garment type; yarn whose group-total yardage
+    falls below the per-weight sweater threshold when a sweater-scale garment is
+    mentioned. Sorts by added_date ascending (oldest first) if oldest_first is True,
+    otherwise by yards_total descending.
     """
     langfuse_context.update_current_observation(
         input={
@@ -167,7 +177,8 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     weight = find_weight_in_text(goal)
     garment_type = _extract_garment_type(goal)
 
-    filtered: list[StashItem] = []
+    # First pass: per-item filters (weaving, weight, fiber).
+    partially_filtered: list[StashItem] = []
     for item in stash:
         if item.is_weaving_yarn:
             continue
@@ -175,14 +186,19 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
             continue
         if (
             garment_type is not None
-            and item.project_quantity != ProjectQuantity.SWEATER
-        ):
-            continue
-        if (
-            garment_type is not None
             and fiber_suitability(item, garment_type) == MatchScore.MISMATCH
         ):
             continue
+        partially_filtered.append(item)
+
+    # Second pass: group-total sweater threshold.
+    group_yards = _group_yards(partially_filtered)
+    filtered: list[StashItem] = []
+    for item in partially_filtered:
+        if garment_type is not None:
+            group_total = group_yards[(item.yarn_id, item.colorway)]
+            if group_total < SWEATER_YARDS_BY_WEIGHT[item.weight_category]:
+                continue
         filtered.append(item)
 
     sf = state.get("stash_filter")
@@ -201,9 +217,11 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
-    Excludes weaving yarn, then applies filters in order: specific_stash_id, weight,
-    min_yards, max_yards, color_family. Results are sorted by added_date ascending
-    (oldest first) if oldest_first is True, otherwise by yards_total descending.
+    Excludes weaving yarn, then applies per-item filters: specific_stash_id, weight,
+    max_yards, color_family. Applies min_yards using group-total yardage so that
+    multiple skeins of the same yarn count together. Results are sorted by added_date
+    ascending (oldest first) if oldest_first is True, otherwise by yards_total desc.
+
     """
     f = state["stash_filter"]
     langfuse_context.update_current_observation(
@@ -217,7 +235,8 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
         f.color_family.lower() if f is not None and f.color_family is not None else None
     )
 
-    filtered: list[StashItem] = []
+    # First pass: per-item filters (weaving, stash id, weight, max_yards, color).
+    partially_filtered: list[StashItem] = []
     for item in stash:
         if item.is_weaving_yarn:
             continue
@@ -229,13 +248,21 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
                 and weight_match(item, f.weight) == MatchScore.MISMATCH
             ):
                 continue
-            if f.min_yards is not None and item.yards_total < f.min_yards:
-                continue
             if f.max_yards is not None and item.yards_total > f.max_yards:
                 continue
             if cf is not None and (
                 item.color_family is None or cf not in item.color_family.lower()
             ):
+                continue
+        partially_filtered.append(item)
+
+    # Second pass: min_yards using group totals.
+    group_yards = _group_yards(partially_filtered)
+    filtered: list[StashItem] = []
+    for item in partially_filtered:
+        if f is not None and f.min_yards is not None:
+            group_total = group_yards[(item.yarn_id, item.colorway)]
+            if group_total < f.min_yards:
                 continue
         filtered.append(item)
 
@@ -453,14 +480,40 @@ _PATTERN_RULE = (
 
 
 def _format_stash_for_prompt(items: list[StashItem]) -> str:
-    """Format filtered stash items as a numbered list for the LLM prompt."""
-    lines: list[str] = []
+    """Format filtered stash items as a numbered list for the LLM prompt.
+
+    Items with the same yarn_id and colorway are grouped into one line with
+    summed yardage and all stash IDs listed.
+    """
+    groups: dict[tuple[int, str | None], list[StashItem]] = defaultdict(list)
     for item in items:
-        fiber = ", ".join(item.fiber) if item.fiber else "unknown fiber"
-        colorway = f" ({item.colorway})" if item.colorway else ""
+        groups[(item.yarn_id, item.colorway)].append(item)
+
+    lines: list[str] = []
+    for group_items in groups.values():
+        first = group_items[0]
+        fiber = ", ".join(first.fiber) if first.fiber else "unknown fiber"
+        colorway = f" ({first.colorway})" if first.colorway else ""
+        total_yards = sum(i.yards_total for i in group_items)
+
+        if len(group_items) == 1:
+            id_str = f"ID {first.stash_id}"
+            yards_str = f"{total_yards:.0f} yds"
+        else:
+            ids = ", ".join(str(i.stash_id) for i in group_items)
+            id_str = f"IDs {ids}"
+            all_same = all(i.yards_total == first.yards_total for i in group_items)
+            if all_same:
+                yards_str = (
+                    f"{total_yards:.0f} yds"
+                    f" ({len(group_items)} × {first.yards_total:.0f} yds)"
+                )
+            else:
+                yards_str = f"{total_yards:.0f} yds"
+
         lines.append(
-            f"[ID {item.stash_id}] {item.brand} {item.yarn_name}{colorway}"
-            f" — {item.weight_category.value}, {item.yards_total:.0f} yds, {fiber}"
+            f"[{id_str}] {first.brand} {first.yarn_name}{colorway}"
+            f" — {first.weight_category.value}, {yards_str}, {fiber}"
         )
     return "\n".join(lines)
 
@@ -572,13 +625,14 @@ def format_output(state: GraphState) -> dict[str, Any]:
             for risk in rec.risks:
                 lines.append(f"     • {risk}")
         if rec.yarn_candidate_ids:
-            yarn_names: list[str] = []
+            seen: set[tuple[str, str]] = set()
             for sid in rec.yarn_candidate_ids:
                 item = stash_by_id.get(sid)
                 if item:
-                    yarn_names.append(f"{item.brand} {item.yarn_name}")
-            if yarn_names:
-                lines.append(f"   Yarn: {', '.join(yarn_names)}")
+                    seen.add((item.brand, item.yarn_name))
+            if seen:
+                name_strs = [f"{b} {n}" for b, n in sorted(seen)]
+                lines.append(f"   Yarn: {', '.join(name_strs)}")
         if rec.pattern_name and rec.pattern_url:
             lines.append(f"   Pattern: {rec.pattern_name} — {rec.pattern_url}")
 

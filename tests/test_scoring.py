@@ -23,6 +23,7 @@ def _make_item(
 ) -> StashItem:
     return StashItem(
         stash_id=1,
+        yarn_id=100,
         brand="Test",
         yarn_name="Test Yarn",
         colorway=None,

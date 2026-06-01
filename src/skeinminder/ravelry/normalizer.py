@@ -92,7 +92,7 @@ class ProjectQuantity(str, Enum):
 
 _SCRAP_THRESHOLD = 200.0
 
-_SWEATER_YARDS_BY_WEIGHT: dict[WeightCategory, float] = {
+SWEATER_YARDS_BY_WEIGHT: dict[WeightCategory, float] = {
     WeightCategory.THREAD: 2000.0,
     WeightCategory.COBWEB: 2000.0,
     WeightCategory.LACE: 1500.0,
@@ -113,12 +113,12 @@ def project_quantity_from_yards(
 ) -> ProjectQuantity:
     """Classify yardage as SCRAP, ACCESSORY, or SWEATER using per-weight thresholds.
 
-    Thresholds are defined in _SWEATER_YARDS_BY_WEIGHT; anything under 200 yards
+    Thresholds are defined in SWEATER_YARDS_BY_WEIGHT; anything under 200 yards
     is always SCRAP regardless of weight.
     """
     if yards < _SCRAP_THRESHOLD:
         return ProjectQuantity.SCRAP
-    if yards < _SWEATER_YARDS_BY_WEIGHT[weight]:
+    if yards < SWEATER_YARDS_BY_WEIGHT[weight]:
         return ProjectQuantity.ACCESSORY
     return ProjectQuantity.SWEATER
 
@@ -140,6 +140,7 @@ class StashItem(BaseModel):
     """
 
     stash_id: int
+    yarn_id: int
     brand: str
     yarn_name: str
     colorway: str | None
@@ -221,6 +222,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
     return StashItem(
         stash_id=raw.id,
+        yarn_id=yarn.id,
         brand=brand,
         yarn_name=yarn_name_str,
         colorway=raw.colorway_name,

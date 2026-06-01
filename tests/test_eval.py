@@ -42,6 +42,7 @@ def _make_example(
     stash: list[dict[str, Any]] = [
         {
             "stash_id": sid,
+            "yarn_id": sid,
             "brand": "Test",
             "yarn_name": f"Yarn {sid}",
             "colorway": "Blue",
@@ -76,6 +77,7 @@ def _make_example(
 def _make_item(*, stash_id: int = 1, yards_total: float = 200.0) -> StashItem:
     return StashItem(
         stash_id=stash_id,
+        yarn_id=100,
         brand="Test",
         yarn_name=f"Yarn {stash_id}",
         colorway="Blue",
@@ -157,6 +159,7 @@ def test_assert_example_weight_mixing_fail() -> None:
     example = _make_example(stash_ids=[1, 2])
     dk_item = StashItem(
         stash_id=2,
+        yarn_id=101,
         brand="Test",
         yarn_name="Yarn 2",
         colorway="Blue",
