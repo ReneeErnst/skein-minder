@@ -106,7 +106,7 @@ def web(port: int, fixture: bool) -> None:
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
-@observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
+@observe(name="skeinminder-recommend")
 def _run_recommend(
     goal: str,
     stash: list[StashItem],

@@ -1125,6 +1125,7 @@ Still open:
 4. Are project notes plain text, HTML, Markdown, or Ravelry markup?
 5. Are there documented rate limits?
 7. Can project photos be uploaded via the API?
+8. **Multi-colorway project support:** The yarn group aggregation feature (Phase 9 fix) groups stash entries by `(yarn_id, colorway)` — different colorways of the same yarn are treated as independent inventory. A future enhancement should consider multi-color projects: a striped sweater using three colorways of the same base yarn, or a colorblock cardigan using two coordinating skeins. This requires both a UX mechanism for the user to declare intent and a recommendation schema that can express "use yarn A for the body, yarn B for the yoke."
 
 Answered (2026-05-16 — full API docs captured in `docs/ravelry-api/`):
 

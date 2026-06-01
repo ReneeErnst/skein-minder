@@ -209,7 +209,7 @@ def run_example(example: EvalExample) -> GraphState:
     return cast(GraphState, result)
 
 
-@observe(name="skeinminder-judge")  # type: ignore[untyped-decorator]
+@observe(name="skeinminder-judge")
 def judge_example(example: EvalExample, state: GraphState) -> JudgeResult:
     """Call the LLM to score recommendation quality on two dimensions (1–5 each).
 
