@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -46,6 +47,14 @@ _SWEATER_GARMENTS: list[str] = [
 _TIER_ORDER: dict[str, int] = {"library": 0, "free": 1, "popular": 2}
 
 _DATE_SORT_SENTINEL = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _group_yards(items: list[StashItem]) -> dict[tuple[int, str | None], float]:
+    """Map (yarn_id, colorway) → total yards across all items in the list."""
+    totals: dict[tuple[int, str | None], float] = defaultdict(float)
+    for item in items:
+        totals[(item.yarn_id, item.colorway)] += item.yards_total
+    return dict(totals)
 
 
 def _date_sort_key(item: StashItem) -> datetime:
