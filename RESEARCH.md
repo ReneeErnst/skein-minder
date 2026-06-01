@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18)_
+_Last updated: 2026-05-31 (expanded product concept to three entry modes; added Phases 8–10; renumbered former Phases 7b–12 to Phases 8–15; added Phase 16; reprioritized for interview — added Phase 9 demo polish, promoted human approval to Phase 10, added Phase 12 eval depth pass, deferred UX wizard to Phase 13, deferred allow-purchase to Phase 14, renumbered cleanup/production to Phases 15–18; Phase 8 complete — PR #12)_
 
 ## Working project name
 
@@ -260,22 +260,25 @@ tests/
 
 ---
 
-### Phase 8 — Stash date filtering
+### Phase 8 — Stash date filtering ✅ COMPLETE (PR #12)
 
-Goal: surface when a stash item was added so the graph can correctly answer temporal queries like "use up my oldest fingering weight" or "what have I had sitting around the longest."
+Surfaces `created_at` from Ravelry stash items so temporal queries like "use my oldest fingering weight" sort by acquisition date rather than yardage. All changes are additive — existing behavior is unchanged when `oldest_first=False`.
 
-Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), but `RawStashItem` drops it today via `extra="ignore"`.
+Background: discovered during Phase 7 UI testing. The supervisor correctly identified "use up" as stash-first mode and filtered by weight, but sorted by yardage descending rather than age. The Ravelry API returns `created_at` on every stash item (confirmed via raw capture — format: `"YYYY/MM/DD HH:MM:SS ±HH:MM"`), which was previously dropped by `extra="ignore"`.
 
-All changes are additive — existing behavior is unchanged when `oldest_first=False` (the default).
+**What was built:**
 
-Tasks:
-- Add `created_at: str | None = None` to `RawStashItem`.
-- Add `added_date: datetime | None = None` to `StashItem`; parse the Ravelry date string in `normalize_stash_item`.
-- Add `oldest_first: bool = False` to `StashFilter`.
-- Extend supervisor keyword detection for temporal phrases ("oldest", "longest", "been sitting", "first acquired"); set `oldest_first=True` on the resulting `StashFilter`.
-- Update `stash_first_filter` to sort ascending by `added_date` when `oldest_first=True`, with `None` dates last. Apply the same logic to `project_first_filter` for symmetry.
-- Refresh committed fixture files to include representative `created_at` values — re-run the recorder, or add plausible dates manually to the existing 39-item fixture. (Note: `stash_list_full.json` also lacks `created_at` since it was built via `model_dump()` before the field was added; re-recording is the cleanest path.)
-- Add tests: supervisor temporal keyword detection, filter sort-by-age, normalizer `added_date` parsing including timezone-aware strings and `None` input.
+- `RawStashItem` gains `created_at: str | None = None`.
+- `StashItem` gains `added_date: datetime | None = None`. New `_parse_ravelry_date(s)` helper in `normalizer.py` parses the Ravelry date string (handles timezone offsets; returns `None` for None or malformed input). `normalize_stash_item` populates `added_date`.
+- `StashFilter` gains `oldest_first: bool = False`.
+- `supervisor` detects `_TEMPORAL_TRIGGERS` frozenset ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True` on the `StashFilter`.
+- Both filter nodes: when `oldest_first=True`, sort by `added_date` ascending via `_date_sort_key` (items with no date sort last via `datetime.max` sentinel); otherwise sort by `yards_total` descending.
+- `tests/fixtures/stash_list.json`: 10 of 39 items now carry `created_at` with a spread of 2016–2025 dates (3 old / 4 mid / 3 recent).
+- Tests added: `_parse_ravelry_date` (4 cases), supervisor temporal keyword detection (5 parametrized cases), filter sort-by-age including `project_first_filter` path and naive-datetime guard.
+
+Note: `stash_list_full.json` still lacks `created_at` (built via `model_dump()` before the field was added); re-running the recorder is the cleanest way to refresh it. The sanitizer does not currently strip `created_at` — timestamps are low-sensitivity, but add them to `_sanitize_stash_item` before the next fixture refresh if desired.
+
+**211 tests passing, CI clean.**
 
 ---
 

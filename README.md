@@ -63,14 +63,18 @@ flowchart TD
         WebUI["Web UI\nFastAPI · SSE · vis-network · Ravelry-inspired styling"]
     end
 
+    subgraph built6 ["✅ Phase 8 — built"]
+        DateFilter["Stash Date Filtering\nadded_date · oldest_first · temporal keyword detection"]
+    end
+
     subgraph future ["📋 Phases 12–13 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
     end
 
     Stash --> Norm --> Graph --> Obs --> Eval
-    Eval --> PatternData --> PatternSearch --> WebUI
-    WebUI --> Gate -->|"✅ approved"| Writer
+    Eval --> PatternData --> PatternSearch --> WebUI --> DateFilter
+    DateFilter --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 
 ```
@@ -102,7 +106,7 @@ flowchart TD
 | 6a | Pattern data layer (client methods, PatternSummary, fixtures) | ✅ Complete |
 | 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
 | 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
-| 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | 📋 Planned |
+| 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | ✅ Complete |
 | 9 | Guided UX wizard — Modes 2 & 3 (stash-constrained and yarn-specific entry paths) | 📋 Planned |
 | 10 | Allow purchase mode — Mode 1 (open recommendations with yarn purchase suggestions) | 📋 Planned |
 | 11 | Performance and cleanup (parallel pattern search, async pagination, streaming) | 📋 Planned |
