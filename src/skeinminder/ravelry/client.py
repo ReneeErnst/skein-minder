@@ -20,6 +20,8 @@ from skeinminder.ravelry.models import (
     RawStashItem,
     RawStashListResponse,
     RawUser,
+    RawYarnBatchResponse,
+    RawYarnFull,
 )
 from skeinminder.ravelry.patterns import (
     RawLibrarySearchResponse,
@@ -126,6 +128,24 @@ class RavelryClient:
     def get_stash_detail(self, username: str, stash_id: int) -> RawStashItem:
         data = self._get(f"/people/{username}/stash/{stash_id}.json")
         return RawStashDetailResponse.model_validate(data).stash
+
+    def get_yarn_details(self, yarn_ids: list[int]) -> dict[int, RawYarnFull]:
+        """Batch-fetch full yarn data including fiber composition.
+
+        Uses GET /yarns.json with space-delimited IDs. Returns a mapping of
+        yarn_id -> RawYarnFull. Returns empty dict if yarn_ids is empty or on
+        any API failure — callers treat absence of fiber data as graceful degradation.
+        """
+        if not yarn_ids:
+            return {}
+        try:
+            ids_param = " ".join(str(i) for i in yarn_ids)
+            data = self._get("/yarns.json", params={"ids": ids_param})
+            response = RawYarnBatchResponse.model_validate(data)
+            return {yarn.id: yarn for yarn in response.yarns}
+        except Exception:
+            logger.warning("Yarn details fetch failed; fiber data will be unavailable")
+            return {}
 
     def get_library_pattern_ids(self, username: str) -> set[int]:
         """Return the set of pattern IDs in the user's Ravelry library.
