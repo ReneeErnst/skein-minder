@@ -106,7 +106,7 @@ def web(port: int, fixture: bool) -> None:
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
-@observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
+@observe(name="skeinminder-recommend")
 def _run_recommend(
     goal: str,
     stash: list[StashItem],
@@ -147,13 +147,21 @@ def _run_recommend(
 
 def _load_stash(use_fixture: bool) -> tuple[list[StashItem], str]:
     """Load stash items and return (items, ravelry_username)."""
+    from skeinminder.ravelry.yarn_enricher import enrich_stash_with_fiber
+
     if use_fixture:
         import json
 
+        from skeinminder.ravelry.client import RavelryClient
+        from skeinminder.ravelry.fixture_transport import FixtureTransport
         from skeinminder.ravelry.models import RawStashListResponse
 
         data = json.loads((FIXTURES_DIR / "stash_list.json").read_text())
         raw_list = RawStashListResponse.model_validate(data)
+        client = RavelryClient(
+            username="fixture", password="fixture", transport=FixtureTransport()
+        )
+        enrich_stash_with_fiber(raw_list.stash, client)
         return normalize_stash(raw_list.stash), "fixture_user"
 
     from skeinminder.config import ConfigError, get_ravelry_credentials
@@ -167,6 +175,7 @@ def _load_stash(use_fixture: bool) -> tuple[list[StashItem], str]:
     with RavelryClient(username=username, password=password) as client:
         user = client.get_current_user()
         raw_items = client.get_stash_list(user.username)
+        enrich_stash_with_fiber(raw_items, client)
     return normalize_stash(raw_items), user.username
 
 

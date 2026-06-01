@@ -51,7 +51,13 @@ module = "langfuse.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "skeinminder.web.server"
+module = [
+    "skeinminder.cli",
+    "skeinminder.eval",
+    "skeinminder.graph.nodes",
+    "skeinminder.web.events",
+    "skeinminder.web.server",
+]
 disable_error_code = ["untyped-decorator"]
 
 [tool.pytest.ini_options]

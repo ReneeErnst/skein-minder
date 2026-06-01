@@ -113,7 +113,7 @@ def _extract_garment_type(goal: str) -> str | None:
     return None
 
 
-@observe(name="supervisor")  # type: ignore[untyped-decorator]
+@observe(name="supervisor")
 def supervisor(state: GraphState) -> dict[str, Any]:
     """Deterministically classify mode and populate user_goal or stash_filter.
 
@@ -147,7 +147,7 @@ def supervisor(state: GraphState) -> dict[str, Any]:
     return {"mode": mode, "user_goal": state["user_input"], "stash_filter": None}
 
 
-@observe(name="project_first_filter")  # type: ignore[untyped-decorator]
+@observe(name="project_first_filter")
 def project_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash for project-first mode, capped at 20 items.
 
@@ -197,7 +197,7 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     return {"filtered_stash": result}
 
 
-@observe(name="stash_first_filter")  # type: ignore[untyped-decorator]
+@observe(name="stash_first_filter")
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
@@ -250,7 +250,7 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
     return {"filtered_stash": result}
 
 
-@observe(name="assess_filter_quality")  # type: ignore[untyped-decorator]
+@observe(name="assess_filter_quality")
 def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     """Assess whether filtered_stash is sufficient to support recommendations.
 
@@ -278,7 +278,7 @@ def assess_filter_quality(state: GraphState) -> dict[str, Any]:
     return {"filter_confidence": "high"}
 
 
-@observe(name="pattern_search")  # type: ignore[untyped-decorator]
+@observe(name="pattern_search")
 def pattern_search(state: GraphState) -> dict[str, Any]:
     """Fetch and rank Ravelry pattern candidates for the filtered stash.
 
@@ -370,7 +370,7 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
         client.close()
 
 
-@observe(name="low_confidence_output")  # type: ignore[untyped-decorator]
+@observe(name="low_confidence_output")
 def low_confidence_output(state: GraphState) -> dict[str, Any]:
     """Summarise what the filter found and ask the user whether to proceed anyway.
 
@@ -465,7 +465,7 @@ def _format_stash_for_prompt(items: list[StashItem]) -> str:
     return "\n".join(lines)
 
 
-@observe(name="recommend", as_type="generation")  # type: ignore[untyped-decorator]
+@observe(name="recommend", as_type="generation")
 def recommend(state: GraphState) -> dict[str, Any]:
     """Call the LLM with filtered stash and return up to 3 Recommendation objects.
 
@@ -548,7 +548,7 @@ def recommend(state: GraphState) -> dict[str, Any]:
     return {"recommendations": result.recommendations}
 
 
-@observe(name="format_output")  # type: ignore[untyped-decorator]
+@observe(name="format_output")
 def format_output(state: GraphState) -> dict[str, Any]:
     """Format recommendations as a plain-text CLI report.
 

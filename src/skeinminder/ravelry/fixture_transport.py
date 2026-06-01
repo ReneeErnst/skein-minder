@@ -37,6 +37,9 @@ class FixtureTransport(httpx.BaseTransport):
         self._pattern_detail = json.loads(
             (_FIXTURES_DIR / "pattern_detail.json").read_text()
         )
+        self._yarn_details = json.loads(
+            (_FIXTURES_DIR / "yarn_details.json").read_text()
+        )
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -55,4 +58,6 @@ class FixtureTransport(httpx.BaseTransport):
             return httpx.Response(200, json=self._stash_list)
         if "/stash/" in path and path.endswith(".json"):
             return httpx.Response(200, json={"stash": self._stash_detail[0]})
+        if path == "/yarns.json":
+            return httpx.Response(200, json=self._yarn_details)
         return httpx.Response(404, json={"error": "fixture not found"})

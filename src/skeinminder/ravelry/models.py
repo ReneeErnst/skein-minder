@@ -32,6 +32,28 @@ class RawFiberCategory(BaseModel):
     name: str
 
 
+class RawYarnFiber(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    percentage: int | None = None
+    fiber_category: RawFiberCategory | None = None
+
+
+class RawYarnFull(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    name: str
+    yarn_fibers: list[RawYarnFiber] = []
+
+
+class RawYarnBatchResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    yarns: dict[str, RawYarnFull] = {}
+
+
 class RawYarnWeight(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

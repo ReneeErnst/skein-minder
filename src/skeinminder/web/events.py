@@ -74,7 +74,7 @@ def _build_result_payload(
     }
 
 
-@observe(name="skeinminder-recommend")  # type: ignore[untyped-decorator]
+@observe(name="skeinminder-recommend")
 async def _invoke_graph(
     graph: Any,
     initial_state: GraphState,
