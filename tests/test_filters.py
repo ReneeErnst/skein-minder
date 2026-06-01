@@ -19,6 +19,8 @@ from skeinminder.ravelry.normalizer import (
 def _make_item(
     *,
     stash_id: int = 1,
+    yarn_id: int = 100,
+    colorway: str | None = None,
     weight: WeightCategory = WeightCategory.WORSTED,
     yards_total: float = 1000.0,
     color_family: str | None = None,
@@ -29,9 +31,10 @@ def _make_item(
 ) -> StashItem:
     return StashItem(
         stash_id=stash_id,
+        yarn_id=yarn_id,
         brand="Test Brand",
         yarn_name="Test Yarn",
-        colorway=None,
+        colorway=colorway,
         weight_category=weight,
         fiber=fiber if fiber is not None else ["Wool"],
         color_family=color_family,

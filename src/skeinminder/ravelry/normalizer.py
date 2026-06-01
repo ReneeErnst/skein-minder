@@ -140,6 +140,7 @@ class StashItem(BaseModel):
     """
 
     stash_id: int
+    yarn_id: int
     brand: str
     yarn_name: str
     colorway: str | None
@@ -221,6 +222,7 @@ def normalize_stash_item(raw: RawStashItem) -> StashItem:
 
     return StashItem(
         stash_id=raw.id,
+        yarn_id=yarn.id,
         brand=brand,
         yarn_name=yarn_name_str,
         colorway=raw.colorway_name,
