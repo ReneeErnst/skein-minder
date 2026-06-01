@@ -22,8 +22,8 @@ from skeinminder.graph.state import GraphState, Recommendation, StashFilter
 from skeinminder.ravelry.client import RavelryClient
 from skeinminder.ravelry.fixture_transport import FixtureTransport
 from skeinminder.ravelry.normalizer import (
+    SWEATER_YARDS_BY_WEIGHT,
     MatchScore,
-    ProjectQuantity,
     StashItem,
     fiber_suitability,
     find_weight_in_text,
@@ -161,9 +161,10 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash for project-first mode, capped at 20 items.
 
     Excludes: weaving yarn; weight mismatches when a weight keyword is present;
-    non-sweater-quantity items when a sweater-scale garment is mentioned;
-    fiber mismatches for the detected garment type. Sorts by added_date ascending
-    (oldest first) if oldest_first is True, otherwise by yards_total descending.
+    fiber mismatches for the detected garment type; yarn whose group-total yardage
+    falls below the per-weight sweater threshold when a sweater-scale garment is
+    mentioned. Sorts by added_date ascending (oldest first) if oldest_first is True,
+    otherwise by yards_total descending.
     """
     langfuse_context.update_current_observation(
         input={
@@ -176,7 +177,8 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
     weight = find_weight_in_text(goal)
     garment_type = _extract_garment_type(goal)
 
-    filtered: list[StashItem] = []
+    # First pass: per-item filters (weaving, weight, fiber).
+    partially_filtered: list[StashItem] = []
     for item in stash:
         if item.is_weaving_yarn:
             continue
@@ -184,14 +186,19 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
             continue
         if (
             garment_type is not None
-            and item.project_quantity != ProjectQuantity.SWEATER
-        ):
-            continue
-        if (
-            garment_type is not None
             and fiber_suitability(item, garment_type) == MatchScore.MISMATCH
         ):
             continue
+        partially_filtered.append(item)
+
+    # Second pass: group-total sweater threshold.
+    group_yards = _group_yards(partially_filtered)
+    filtered: list[StashItem] = []
+    for item in partially_filtered:
+        if garment_type is not None:
+            group_total = group_yards[(item.yarn_id, item.colorway)]
+            if group_total < SWEATER_YARDS_BY_WEIGHT[item.weight_category]:
+                continue
         filtered.append(item)
 
     sf = state.get("stash_filter")

@@ -76,19 +76,64 @@ def _make_state(
 # --- project_first_filter ---
 
 
-def test_project_first_filter_requires_sweater_quantity_for_sweater_goals() -> None:
+def test_project_first_filter_excludes_low_yardage_for_sweater_goals() -> None:
+    # Distinct yarn_ids — group total equals per-item total.
+    # DK threshold is 900 yds; items with < 900 yds are excluded.
     items = [
-        _make_item(stash_id=1, project_quantity=ProjectQuantity.SWEATER),
-        _make_item(stash_id=2, project_quantity=ProjectQuantity.ACCESSORY),
-        _make_item(stash_id=3, project_quantity=ProjectQuantity.SCRAP),
+        _make_item(stash_id=1, yarn_id=1, weight=WeightCategory.DK, yards_total=1000.0),
+        _make_item(stash_id=2, yarn_id=2, weight=WeightCategory.DK, yards_total=400.0),
+        _make_item(stash_id=3, yarn_id=3, weight=WeightCategory.DK, yards_total=100.0),
     ]
     result = project_first_filter(
         _make_state(stash=items, user_goal="I want a cardigan")
     )
     ids = [i.stash_id for i in result["filtered_stash"]]
     assert 1 in ids
-    assert 2 not in ids  # accessory excluded for sweater-scale goals
-    assert 3 not in ids  # scrap excluded for sweater-scale goals
+    assert 2 not in ids
+    assert 3 not in ids
+
+
+def test_project_first_filter_groups_same_yarn_colorway_for_sweater_check() -> None:
+    # 6 × 200 yd DK, same yarn_id and colorway → group total 1200 yds ≥ 900 → all pass
+    items = [
+        _make_item(stash_id=i, yarn_id=5, weight=WeightCategory.DK, yards_total=200.0)
+        for i in range(1, 7)
+    ]
+    result = project_first_filter(
+        _make_state(stash=items, user_goal="I want a cardigan")
+    )
+    ids = [i.stash_id for i in result["filtered_stash"]]
+    assert set(ids) == {1, 2, 3, 4, 5, 6}
+
+
+def test_project_first_filter_treats_different_colorways_as_independent_groups() -> (
+    None
+):
+    # 3 × 200 yd DK colorway A + 3 × 200 yd DK colorway B
+    # Each group = 600 yds < 900 (DK threshold) → all 6 excluded
+    items = [
+        _make_item(
+            stash_id=i,
+            yarn_id=5,
+            weight=WeightCategory.DK,
+            yards_total=200.0,
+            colorway="Colorway A",
+        )
+        for i in range(1, 4)
+    ] + [
+        _make_item(
+            stash_id=i,
+            yarn_id=5,
+            weight=WeightCategory.DK,
+            yards_total=200.0,
+            colorway="Colorway B",
+        )
+        for i in range(4, 7)
+    ]
+    result = project_first_filter(
+        _make_state(stash=items, user_goal="I want a cardigan")
+    )
+    assert result["filtered_stash"] == []
 
 
 def test_project_first_filter_weight_excludes_mismatches() -> None:
