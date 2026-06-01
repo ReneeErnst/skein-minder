@@ -51,7 +51,7 @@ class RawYarnFull(BaseModel):
 class RawYarnBatchResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    yarns: list[RawYarnFull] = []
+    yarns: dict[str, RawYarnFull] = {}
 
 
 class RawYarnWeight(BaseModel):

@@ -16,10 +16,10 @@ def test_get_yarn_details_returns_fiber_data() -> None:
 
     assert 110466 in result
     assert 66891 in result
-    wool_fibers = result[110466].yarn_fibers
-    assert len(wool_fibers) == 1
-    assert wool_fibers[0].fiber_category is not None
-    assert wool_fibers[0].fiber_category.name == "Wool"
+    katahdin_fibers = result[110466].yarn_fibers
+    assert len(katahdin_fibers) == 1
+    assert katahdin_fibers[0].fiber_category is not None
+    assert katahdin_fibers[0].fiber_category.name == "Wool"
 
 
 def test_get_yarn_details_returns_empty_dict_on_empty_input() -> None:

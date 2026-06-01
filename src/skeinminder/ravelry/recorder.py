@@ -90,7 +90,7 @@ def record(raw: bool = False) -> None:
             )
             _write(FIXTURES_DIR / "yarn_details.json", yarn_data)
             parsed = RawYarnBatchResponse.model_validate(yarn_data)
-            fibers_found = sum(1 for y in parsed.yarns if y.yarn_fibers)
+            fibers_found = sum(1 for y in parsed.yarns.values() if y.yarn_fibers)
             print(
                 f"    → saved {len(parsed.yarns)} yarns, {fibers_found} with fiber data"
             )

@@ -1,6 +1,6 @@
 {
-  "yarns": [
-    {
+  "yarns": {
+    "110466": {
       "id": 110466,
       "name": "Katahdin",
       "yarn_fibers": [
@@ -15,7 +15,7 @@
         }
       ]
     },
-    {
+    "66891": {
       "id": 66891,
       "name": "Cotton Tale 8",
       "yarn_fibers": [
@@ -30,7 +30,7 @@
         }
       ]
     },
-    {
+    "26385": {
       "id": 26385,
       "name": "Sock",
       "yarn_fibers": [
@@ -45,7 +45,7 @@
         }
       ]
     },
-    {
+    "136274": {
       "id": 136274,
       "name": "Superwash Merino Bulky",
       "yarn_fibers": [
@@ -60,7 +60,7 @@
         }
       ]
     },
-    {
+    "39661": {
       "id": 39661,
       "name": "Starry",
       "yarn_fibers": [
@@ -84,7 +84,7 @@
         }
       ]
     },
-    {
+    "3569": {
       "id": 3569,
       "name": "Sea Wool",
       "yarn_fibers": [
@@ -108,7 +108,7 @@
         }
       ]
     },
-    {
+    "65153": {
       "id": 65153,
       "name": "Organic Cotton Worsted",
       "yarn_fibers": [
@@ -123,9 +123,9 @@
         }
       ]
     },
-    {
+    "3309": {
       "id": 3309,
-      "name": "Cascade 220® Heathers",
+      "name": "Cascade 220\u00ae Heathers",
       "yarn_fibers": [
         {
           "id": 10,
@@ -138,7 +138,7 @@
         }
       ]
     },
-    {
+    "35367": {
       "id": 35367,
       "name": "Tosh DK",
       "yarn_fibers": [
@@ -153,7 +153,7 @@
         }
       ]
     },
-    {
+    "81720": {
       "id": 81720,
       "name": "Biggo",
       "yarn_fibers": [
@@ -177,7 +177,7 @@
         }
       ]
     },
-    {
+    "143076": {
       "id": 143076,
       "name": "Millefiori",
       "yarn_fibers": [
@@ -201,5 +201,5 @@
         }
       ]
     }
-  ]
+  }
 }

@@ -142,7 +142,7 @@ class RavelryClient:
             ids_param = " ".join(str(i) for i in yarn_ids)
             data = self._get("/yarns.json", params={"ids": ids_param})
             response = RawYarnBatchResponse.model_validate(data)
-            return {yarn.id: yarn for yarn in response.yarns}
+            return {yarn.id: yarn for yarn in response.yarns.values()}
         except Exception:
             logger.warning("Yarn details fetch failed; fiber data will be unavailable")
             return {}
