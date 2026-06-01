@@ -256,7 +256,7 @@ def normalize_stash(raw_items: list[RawStashItem]) -> list[StashItem]:
 
 
 # Weight ordering for adjacency checks (lower index = lighter)
-_WEIGHT_ORDER: list[WeightCategory] = [
+WEIGHT_ORDER: list[WeightCategory] = [
     WeightCategory.THREAD,
     WeightCategory.COBWEB,
     WeightCategory.LACE,
@@ -283,8 +283,8 @@ def weight_match(item: StashItem, pattern_weight: WeightCategory) -> MatchScore:
     if item.weight_category == pattern_weight:
         return MatchScore.EXACT
     try:
-        stash_idx = _WEIGHT_ORDER.index(item.weight_category)
-        pattern_idx = _WEIGHT_ORDER.index(pattern_weight)
+        stash_idx = WEIGHT_ORDER.index(item.weight_category)
+        pattern_idx = WEIGHT_ORDER.index(pattern_weight)
     except ValueError:
         return MatchScore.MISMATCH
     if abs(stash_idx - pattern_idx) == 1:

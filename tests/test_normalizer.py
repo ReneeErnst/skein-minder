@@ -15,7 +15,7 @@ from skeinminder.ravelry.models import (
     RawYarnWeight,
 )
 from skeinminder.ravelry.normalizer import (
-    _WEIGHT_ORDER,
+    WEIGHT_ORDER,
     ProjectQuantity,
     StashItem,
     WeightCategory,
@@ -83,11 +83,11 @@ def test_weight_category_from_string(
 
 
 def test_weight_order_lightest_to_heaviest() -> None:
-    thread_idx = _WEIGHT_ORDER.index(WeightCategory.THREAD)
-    cobweb_idx = _WEIGHT_ORDER.index(WeightCategory.COBWEB)
-    lace_idx = _WEIGHT_ORDER.index(WeightCategory.LACE)
-    lf_idx = _WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
-    fingering_idx = _WEIGHT_ORDER.index(WeightCategory.FINGERING)
+    thread_idx = WEIGHT_ORDER.index(WeightCategory.THREAD)
+    cobweb_idx = WEIGHT_ORDER.index(WeightCategory.COBWEB)
+    lace_idx = WEIGHT_ORDER.index(WeightCategory.LACE)
+    lf_idx = WEIGHT_ORDER.index(WeightCategory.LIGHT_FINGERING)
+    fingering_idx = WEIGHT_ORDER.index(WeightCategory.FINGERING)
     assert thread_idx < cobweb_idx < lace_idx < lf_idx < fingering_idx
 
 

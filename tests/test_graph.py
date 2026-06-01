@@ -8,6 +8,7 @@ import pytest
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
     _extract_garment_pc,
+    _filter_by_weight_adjacency,
     _format_stash_for_prompt,
     assess_filter_quality,
     format_output,
@@ -372,6 +373,130 @@ def test_pattern_search_omits_pc_for_vague_goal() -> None:
     for call in mock_client.search_patterns.call_args_list:
         assert call.kwargs.get("pc") is None
         assert call.kwargs.get("query") == "something cozy"
+
+
+# --- _filter_by_weight_adjacency ---
+
+
+def _make_summary_with_weight(pid: int, weight_name: str | None) -> PatternSummary:
+    return PatternSummary(
+        pattern_id=pid,
+        name=f"Pattern {pid}",
+        permalink=f"pattern-{pid}",
+        url=f"https://www.ravelry.com/patterns/library/pattern-{pid}",
+        free=True,
+        library_owned=False,
+        yardage_min=None,
+        yardage_max=None,
+        weight_name=weight_name,
+        tier="free",
+    )
+
+
+WEIGHT_ADJACENCY_SCENARIOS = [
+    pytest.param(
+        {
+            "dominant": WeightCategory.WORSTED,
+            "patterns": [
+                _make_summary_with_weight(1, "Worsted"),  # exact — keep
+                _make_summary_with_weight(2, "Aran"),  # 1 step — keep
+                _make_summary_with_weight(3, "DK"),  # 1 step — keep
+                _make_summary_with_weight(4, "Fingering"),  # >1 step — exclude
+                _make_summary_with_weight(5, "Bulky"),  # >1 step — exclude
+                _make_summary_with_weight(6, None),  # no weight — keep
+            ],
+            "expected_ids": {1, 2, 3, 6},
+        },
+        id="worsted_dominant",
+    ),
+    pytest.param(
+        {
+            "dominant": WeightCategory.FINGERING,
+            "patterns": [
+                _make_summary_with_weight(1, "Fingering"),  # exact — keep
+                _make_summary_with_weight(2, "Sport"),  # 1 step — keep
+                _make_summary_with_weight(3, "Light Fingering"),  # 1 step — keep
+                _make_summary_with_weight(4, "DK"),  # >1 step — exclude
+                _make_summary_with_weight(5, "Worsted"),  # >1 step — exclude
+            ],
+            "expected_ids": {1, 2, 3},
+        },
+        id="fingering_dominant",
+    ),
+    pytest.param(
+        {
+            "dominant": WeightCategory.UNKNOWN,
+            "patterns": [
+                _make_summary_with_weight(1, "Worsted"),
+                _make_summary_with_weight(2, "Fingering"),
+                _make_summary_with_weight(3, None),
+            ],
+            "expected_ids": {1, 2, 3},
+        },
+        id="unknown_dominant_passes_all",
+    ),
+]
+
+
+@pytest.mark.parametrize("scenario", WEIGHT_ADJACENCY_SCENARIOS)
+def test_filter_by_weight_adjacency(scenario: dict[str, Any]) -> None:
+    result = _filter_by_weight_adjacency(scenario["patterns"], scenario["dominant"])
+    assert {s.pattern_id for s in result} == scenario["expected_ids"]
+
+
+def test_filter_by_weight_adjacency_keeps_unmapped_weight_name() -> None:
+    """A weight_name that doesn't map to any known WeightCategory passes through."""
+    summaries = [_make_summary_with_weight(1, "Some Exotic Weight")]
+    result = _filter_by_weight_adjacency(summaries, WeightCategory.WORSTED)
+    assert len(result) == 1
+
+
+def test_pattern_search_applies_weight_adjacency_filter() -> None:
+    """Out-of-range weight patterns are stripped before the 10-candidate cap."""
+    worsted_item = _make_item(
+        stash_id=1, yards_total=1000.0, weight_category=WeightCategory.WORSTED
+    )
+    state = _make_state(
+        filtered_stash=[worsted_item],
+        user_goal="I want a cardigan",
+        use_fixture=False,
+        ravelry_username="testuser",
+    )
+    # One worsted pattern (adjacent) and one fingering pattern (>1 step away)
+    mock_client = _make_client_mock(
+        library_ids=set(),
+        free_patterns=[
+            _make_raw_pattern(101, "Worsted Cardigan", True),
+            _make_raw_pattern(102, "Fingering Shawl", True),
+        ],
+        popular_patterns=[],
+        detail_map={
+            101: RawPatternFull(
+                id=101,
+                name="Worsted Cardigan",
+                permalink="worsted-cardigan",
+                free=True,
+                yardage=800,
+                yardage_max=1000,
+                yarn_weight=RawPatternYarnWeight(id=1, name="Worsted"),
+            ),
+            102: RawPatternFull(
+                id=102,
+                name="Fingering Shawl",
+                permalink="fingering-shawl",
+                free=True,
+                yardage=400,
+                yardage_max=600,
+                yarn_weight=RawPatternYarnWeight(id=2, name="Fingering"),
+            ),
+        },
+    )
+    with patch("skeinminder.graph.nodes.RavelryClient", return_value=mock_client):
+        result = pattern_search(state)
+
+    ids = {c.pattern_id for c in result["pattern_candidates"]}
+    assert 101 in ids, "Worsted pattern should be kept (exact match)"
+    assert 102 not in ids, "Fingering pattern should be excluded (>1 step from Worsted)"
 
 
 # --- recommend ---

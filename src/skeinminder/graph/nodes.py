@@ -23,11 +23,13 @@ from skeinminder.ravelry.client import RavelryClient
 from skeinminder.ravelry.fixture_transport import FixtureTransport
 from skeinminder.ravelry.normalizer import (
     SWEATER_YARDS_BY_WEIGHT,
+    WEIGHT_ORDER,
     MatchScore,
     StashItem,
     WeightCategory,
     fiber_suitability,
     find_weight_in_text,
+    weight_category_from_string,
     weight_match,
 )
 from skeinminder.ravelry.patterns import PatternSummary, RawPattern, normalize_pattern
@@ -157,6 +159,32 @@ def _extract_garment_pc(goal: str) -> str | None:
         if re.search(r"\b" + keyword + r"\b", goal) is not None:
             return permalink
     return None
+
+
+def _filter_by_weight_adjacency(
+    summaries: list[PatternSummary],
+    dominant: WeightCategory,
+) -> list[PatternSummary]:
+    """Remove patterns whose weight is more than one step from dominant.
+
+    Patterns with no weight_name, or whose weight maps to UNKNOWN, pass through
+    unchanged. When dominant is UNKNOWN (not in WEIGHT_ORDER), all patterns pass.
+    """
+    if dominant not in WEIGHT_ORDER:
+        return summaries
+    dominant_idx = WEIGHT_ORDER.index(dominant)
+    kept: list[PatternSummary] = []
+    for s in summaries:
+        if s.weight_name is None:
+            kept.append(s)
+            continue
+        pattern_weight = weight_category_from_string(s.weight_name)
+        if pattern_weight not in WEIGHT_ORDER:
+            kept.append(s)
+            continue
+        if abs(WEIGHT_ORDER.index(pattern_weight) - dominant_idx) <= 1:
+            kept.append(s)
+    return kept
 
 
 @observe(name="supervisor")
@@ -435,6 +463,7 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
                 library_owned_count += 1
             summaries.append(summary)
 
+        summaries = _filter_by_weight_adjacency(summaries, weight_cat)
         summaries.sort(key=lambda s: _TIER_ORDER[s.tier])
         result_candidates = summaries[:10]
 
