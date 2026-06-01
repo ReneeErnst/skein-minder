@@ -217,9 +217,11 @@ def project_first_filter(state: GraphState) -> dict[str, Any]:
 def stash_first_filter(state: GraphState) -> dict[str, Any]:
     """Filter stash by StashFilter fields, capped at 20 items.
 
-    Excludes weaving yarn, then applies filters in order: specific_stash_id, weight,
-    min_yards, max_yards, color_family. Results are sorted by added_date ascending
-    (oldest first) if oldest_first is True, otherwise by yards_total descending.
+    Excludes weaving yarn, then applies per-item filters: specific_stash_id, weight,
+    max_yards, color_family. Applies min_yards using group-total yardage so that
+    multiple skeins of the same yarn count together. Results are sorted by added_date
+    ascending (oldest first) if oldest_first is True, otherwise by yards_total desc.
+
     """
     f = state["stash_filter"]
     langfuse_context.update_current_observation(
@@ -233,7 +235,8 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
         f.color_family.lower() if f is not None and f.color_family is not None else None
     )
 
-    filtered: list[StashItem] = []
+    # First pass: per-item filters (weaving, stash id, weight, max_yards, color).
+    partially_filtered: list[StashItem] = []
     for item in stash:
         if item.is_weaving_yarn:
             continue
@@ -245,13 +248,21 @@ def stash_first_filter(state: GraphState) -> dict[str, Any]:
                 and weight_match(item, f.weight) == MatchScore.MISMATCH
             ):
                 continue
-            if f.min_yards is not None and item.yards_total < f.min_yards:
-                continue
             if f.max_yards is not None and item.yards_total > f.max_yards:
                 continue
             if cf is not None and (
                 item.color_family is None or cf not in item.color_family.lower()
             ):
+                continue
+        partially_filtered.append(item)
+
+    # Second pass: min_yards using group totals.
+    group_yards = _group_yards(partially_filtered)
+    filtered: list[StashItem] = []
+    for item in partially_filtered:
+        if f is not None and f.min_yards is not None:
+            group_total = group_yards[(item.yarn_id, item.colorway)]
+            if group_total < f.min_yards:
                 continue
         filtered.append(item)
 

@@ -277,9 +277,10 @@ STASH_FIRST_FILTER_SCENARIOS: list[dict[str, Any]] = [
         "expected_out": [2],
     },
     {
+        # Each item is a distinct yarn; individual totals govern the group check.
         "items": [
-            _make_item(stash_id=1, yards_total=400.0),
-            _make_item(stash_id=2, yards_total=1000.0),
+            _make_item(stash_id=1, yarn_id=1, yards_total=400.0),
+            _make_item(stash_id=2, yarn_id=2, yards_total=1000.0),
         ],
         "stash_filter": StashFilter(min_yards=600.0),
         "expected_in": [2],
@@ -308,6 +309,32 @@ STASH_FIRST_FILTER_SCENARIOS: list[dict[str, Any]] = [
         "stash_filter": StashFilter(specific_stash_id=42),
         "expected_in": [42],
         "expected_out": [99],
+    },
+    {
+        # Same yarn/colorway → group total 1200 yds ≥ min_yards=1000 → all pass
+        "items": [
+            _make_item(
+                stash_id=i, yarn_id=5, weight=WeightCategory.DK, yards_total=200.0
+            )
+            for i in range(1, 7)
+        ],
+        "stash_filter": StashFilter(min_yards=1000.0),
+        "expected_in": [1, 2, 3, 4, 5, 6],
+        "expected_out": [],
+    },
+    {
+        # max_yards is per-item: 400 yd items exceed max_yards=350 → both excluded
+        "items": [
+            _make_item(
+                stash_id=1, yarn_id=5, weight=WeightCategory.DK, yards_total=400.0
+            ),
+            _make_item(
+                stash_id=2, yarn_id=5, weight=WeightCategory.DK, yards_total=400.0
+            ),
+        ],
+        "stash_filter": StashFilter(max_yards=350.0),
+        "expected_in": [],
+        "expected_out": [1, 2],
     },
 ]
 
