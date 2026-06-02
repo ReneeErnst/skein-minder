@@ -132,7 +132,7 @@ documents the planned remediation: expand the keyword set first (covers most par
 sentence-transformer embedding classifier as a fallback (a ~80MB model that runs in ~10–30ms on CPU with no network 
 call). A full LLM call for this task would be disproportionate.
 
-**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
+C**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
 selection pre-sets `mode` in `GraphState`, and the supervisor skips classification. That's the right long-term 
 direction: move intent disambiguation to the UI rather than making the NLP harder.
 

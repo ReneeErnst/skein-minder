@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -98,7 +98,7 @@ def _make_raw_pattern(pid: int, name: str, free: bool) -> RawPattern:
 
 def _make_pattern_summary(
     pid: int,
-    tier: str,
+    tier: Literal["library", "free", "popular"],
     yardage_min: int | None = 800,
 ) -> PatternSummary:
     return PatternSummary(
