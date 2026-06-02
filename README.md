@@ -15,7 +15,7 @@ flowchart TD
     PFF["project_first_filter\ngoal → yarn candidates"]
     SFF["stash_first_filter\nyarn → project candidates"]
     AQ["assess_filter_quality\nhigh / low confidence"]
-    LCO["low_confidence_output\nwarn + confirm"]
+    LCO["low_confidence_output\ninterrupt · await human"]
     PS["pattern_search\nlibrary · free · popular · batch detail"]
     Rec["recommend\nClaude · prompt caching · pattern pairing"]
     Fmt["format_output\nyarn + pattern + URL"]
@@ -27,11 +27,12 @@ flowchart TD
     SFF --> AQ
     AQ -->|high| PS
     AQ -->|low| LCO
-    LCO -->|confirmed| PS
-    LCO -->|declined| END(["END"])
+    LCO -->|"✅ approved"| PS
+    LCO -->|"❌ cancelled"| END(["END"])
     PS --> Rec
     Rec --> Fmt
     Fmt --> CLI(["skeinminder recommend"])
+    Fmt --> Web(["web UI · http://localhost:8000"])
 ```
 
 Every node is instrumented with Langfuse `@observe` spans. Run `docker compose up -d` to stand up a local Langfuse instance and see traces in the UI.

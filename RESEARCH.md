@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-06-01_
+_Last updated: 2026-06-02_
 
 ## Working project name
 
@@ -59,18 +59,6 @@ Cauldron notebooks, BigQuery, and GCS.
 6. **Phase 13** — eval depth (a failing golden example with a Langfuse trace is stronger demo material)
 
 Phases 12 and 14–19 strengthen the product but are not required for a compelling technical demo.
-
----
-
-### Phase 9 — Pattern search: category filtering and weight targeting ✅ COMPLETE
-
-Merged in PR #15. `_GARMENT_TO_PC` dict mapping knitting vocabulary to Ravelry category permalinks; `pc=` filter passed to `search_patterns`; weight selection priority (goal text → stash filter → modal stash → heaviest item); weight-adjacency pre-filter strips patterns more than one step from dominant stash weight before the 10-candidate cap.
-
----
-
-### Phase 10a — Interrupt migration + checkpointer ✅ COMPLETE
-
-PR #16. `low_confidence_output` migrated from `click.confirm()` to `interrupt()` with a `{"message", "candidate_count"}` payload. `MemorySaver` checkpointer wired into `build_graph()` (optional param, defaults to fresh instance). CLI detects interrupt via `graph.get_state()` and calls `click.confirm()` in CLI context. Web: `_invoke_graph` handles full lifecycle (run → detect interrupt → await `resume_future` → resume or cancel) under one Langfuse trace; `POST /approve/{id}` resolves the future with `True`, `POST /cancel/{id}` with `False`; both return 404 for unknown IDs; `stream_graph_events` yields a `pause` SSE event on interrupt and holds the SSE connection open until resolved.
 
 ---
 
@@ -252,57 +240,15 @@ Mode echo-back (let the user see and correct the detected mode) was pulled forwa
 
 A full generative LLM call for binary intent detection (~200–400ms API round-trip) is disproportionate. Defer option 2 until keyword expansion is in place and still producing visible misclassifications.
 
-**3. `pattern_search` — category-based filtering and candidate pre-filtering**
-
-Two related problems that together cause pattern fields to be null even when the LLM has good yarn candidates. Full implementation notes are in Phase 9. Key permalink mapping (from the live category tree, confirmed 2026-05-31):
-
-| User term(s) | Ravelry permalink | Category ID |
-|---|---|---|
-| cardigan | cardigan | 304 |
-| pullover, jumper | pullover | 306 |
-| sweater (generic) | sweater | 319 |
-| vest | vest | 310 |
-| coat, jacket | coat | 311 |
-| shrug, bolero | shrug | 305 |
-| hat, beanie, toque | hat | 411 |
-| beret, tam | beret-tam | 412 |
-| brimmed hat | brimmed | 415 |
-| earflap hat | earflap | 419 |
-| scarf | scarf | 339 |
-| cowl | cowl | 340 |
-| shawl, wrap | shawl-wrap | 350 |
-| poncho | poncho | 349 |
-| cape | cape | 348 |
-| mittens | mittens | 391 |
-| gloves | gloves | 394 |
-| fingerless | fingerless | 395 |
-| socks, sock | socks | 354 |
-| slippers | slippers | 363 |
-| legwarmers | legwarmers | 365 |
-| headband | headband | 403 |
-| earwarmers | earwarmers | 409 |
-| blanket, throw | blanket | 450 |
-| bag | bag | 372 |
-| tote | tote | 374 |
-| dress | dress | 325 |
-| skirt | skirt | 313 |
-| top | tops | 912 |
-
-When no garment type is detected, omit `pc` and fall back to free-text `query` — this handles vague inputs ("something cozy", "a gift") acceptably.
-
-**Weight selection priority.** Better than current (heaviest-yardage item): (1) weight keyword in the user's goal, (2) modal weight across filtered items, (3) heaviest-yardage item's weight.
-
-**Candidate pre-filtering.** Keep only patterns whose `weight_name` is within one step of the dominant stash weight before the LLM sees them.
-
-**4. Stash/yarn photos in result cards**
+**3. Stash/yarn photos in result cards**
 
 Result cards show no image when no pattern is matched, even though Ravelry stash entries have photos. The stash list endpoint returns `first_photo` on the yarn object. Implementation path: expose `first_photo` on `RawYarn`, carry it through `StashItem` → `_build_result_payload`, and render it as a fallback `<img>` in `_renderCards` when `photo_url` is null.
 
-**5. Hallucinated stash IDs fail silently** _(trivial — do in next PR touching `format_output`)_
+**4. Hallucinated stash IDs fail silently** _(trivial — do in next PR touching `format_output`)_
 
 `format_output` calls `stash_by_id.get(sid)` and silently drops any ID the LLM invented. The eval suite catches this in tests, but production runs have no signal. Add `_logger.warning("LLM returned stash ID %d not in filtered_stash", sid)` — one line, materially improves debuggability.
 
-**6. `LAST_RUN_PATH` is a process-relative path** _(trivial — do in next PR touching `events.py`)_
+**5. `LAST_RUN_PATH` is a process-relative path** _(trivial — do in next PR touching `events.py`)_
 
 `LAST_RUN_PATH = Path("last_run.json")` resolves against whatever directory `uvicorn` starts in. Pin it relative to `__file__` or make it configurable via env var. Low priority until the production milestone replaces it with a proper result store, but trivial to harden now.
 

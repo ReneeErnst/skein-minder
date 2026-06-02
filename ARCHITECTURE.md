@@ -132,7 +132,7 @@ documents the planned remediation: expand the keyword set first (covers most par
 sentence-transformer embedding classifier as a fallback (a ~80MB model that runs in ~10–30ms on CPU with no network 
 call). A full LLM call for this task would be disproportionate.
 
-C**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
+**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
 selection pre-sets `mode` in `GraphState`, and the supervisor skips classification. That's the right long-term 
 direction: move intent disambiguation to the UI rather than making the NLP harder.
 
@@ -224,13 +224,13 @@ renders static cards.
  mode-specific input → results) and Phase 11 approval modal will push against the limits of manual DOM management. The 
  right point to evaluate a lightweight framework (Preact, Alpine.js) is when Phase 14a ships — not before.
 
-SSE is also one-directional: the server can push events to the client, but the client can't send mid-stream messages 
-back. The approval flow (Phase 10) will need a separate HTTP POST (`/approve/{id}`) to send the user's decision back. 
-That's already stubbed.
+SSE is also one-directional: the server can push events to the client, but the client can't send mid-stream messages
+back. Phase 10a implemented `POST /approve/{id}` and `POST /cancel/{id}` to relay the user's decision back to the
+paused graph; both return 404 for unknown run IDs.
 
-**At scale:** Multi-user use would require replacing `_streams` (an in-process dict of `asyncio.Queue` objects) with a 
-Redis pub/sub or similar external message bus. The current design uses a stream TTL eviction task (Phase 10b) to prevent
-unbounded memory growth, but it's inherently single-process.
+**At scale:** Multi-user use would require replacing `_streams` (an in-process dict of `asyncio.Queue` objects) with a
+Redis pub/sub or similar external message bus. Phase 10b plans to add a TTL-based eviction task to prevent unbounded
+memory growth in `_streams`; until then, the dict can grow without bound in a long-running server process.
 
 ---
 
