@@ -4,7 +4,9 @@ from typing import Any, Literal, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
@@ -13,7 +15,6 @@ from skeinminder.graph.nodes import (
     _format_stash_for_prompt,
     assess_filter_quality,
     format_output,
-    low_confidence_output,
     pattern_search,
     recommend,
 )
@@ -795,40 +796,6 @@ def test_build_graph_accepts_custom_checkpointer() -> None:
 # --- full graph integration (recommend mocked) ---
 
 
-def test_graph_project_first_routes_and_formats(
-    normalized_stash: list[StashItem],
-) -> None:
-    """Should route through low-confidence path and return formatted recommendations.
-
-    The fixture stash contains no sweater-quantity yarn, so a cardigan goal triggers
-    low_confidence_output. click.confirm is patched to simulate the user choosing
-    to proceed anyway.
-    """
-    canned = _canned_recommendations(stash_id=normalized_stash[0].stash_id)
-
-    with (
-        patch("skeinminder.graph.nodes.recommend") as mock_rec,
-        patch("click.confirm", return_value=True),
-        patch("click.echo"),
-    ):
-        mock_rec.return_value = {"recommendations": canned}
-        graph = build_graph()
-        result = graph.invoke(
-            _make_state(
-                user_input="I want a cozy cardigan",
-                mode="",
-                user_goal=None,
-                normalized_stash=normalized_stash,
-            ),
-            config={"configurable": {"thread_id": "test"}},
-        )
-
-    assert result["mode"] == "project_first"
-    assert result["recommendations"] is not None
-    assert len(result["recommendations"]) == 3
-    assert "Project 1" in result["formatted_output"]
-
-
 def test_graph_stash_first_routes_and_formats(
     normalized_stash: list[StashItem],
 ) -> None:
@@ -893,31 +860,46 @@ def test_assess_filter_quality(scenario: dict[str, Any]) -> None:
     assert result["filter_confidence"] == scenario["expected"]
 
 
-# --- low_confidence_output ---
+# --- low_confidence_output interrupt tests ---
 
 
-def test_low_confidence_output_user_confirms() -> None:
-    state = _make_state(filter_confidence="low")
-    with patch("click.confirm", return_value=True), patch("click.echo"):
-        result = low_confidence_output(state)
-
-    assert result["force_recommend"] is True
-    assert "formatted_output" not in result
+def _make_low_conf_state() -> GraphState:
+    """State that routes to low_confidence_output: empty stash → low confidence."""
+    return _make_state(mode="", user_goal=None, normalized_stash=[])
 
 
-def test_low_confidence_output_user_declines() -> None:
-    state = _make_state(filter_confidence="low")
-    with patch("click.confirm", return_value=False), patch("click.echo"):
-        result = low_confidence_output(state)
-
-    assert result["force_recommend"] is False
-    assert "No recommendations generated" in result["formatted_output"]
-
-
-# --- low-confidence integration path ---
+def _run_to_interrupt(checkpointer: MemorySaver, thread_id: str) -> Any:
+    """Invoke the graph until it hits the interrupt; return the graph object."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    graph = build_graph(checkpointer=checkpointer)
+    graph.invoke(_make_low_conf_state(), config=config)
+    return graph
 
 
-def test_graph_low_confidence_user_confirms() -> None:
+def test_graph_pauses_at_low_confidence_interrupt() -> None:
+    """Graph pauses at low_confidence_output interrupt with expected payload."""
+    checkpointer = MemorySaver()
+    thread_id = "pause-test"
+    config = {"configurable": {"thread_id": thread_id}}
+    graph = _run_to_interrupt(checkpointer, thread_id)
+
+    state = graph.get_state(config)
+    assert state.next  # graph is paused (next nodes are non-empty)
+
+    # The interrupt value should include message and candidate_count
+    interrupts = [i for task in state.tasks for i in task.interrupts]
+    assert len(interrupts) == 1
+    payload = interrupts[0].value
+    assert "message" in payload
+    assert "candidate_count" in payload
+    assert payload["candidate_count"] == 0  # empty stash
+
+
+def test_graph_low_confidence_resumes_on_approve() -> None:
+    """After Command(resume=True), graph runs recommend and returns recommendations."""
+    checkpointer = MemorySaver()
+    thread_id = "approve-test"
+    config = {"configurable": {"thread_id": thread_id}}
     canned = [
         Recommendation(
             title=f"Project {i}",
@@ -928,36 +910,24 @@ def test_graph_low_confidence_user_confirms() -> None:
         for i in range(1, 4)
     ]
 
-    with (
-        patch("skeinminder.graph.nodes.recommend") as mock_rec,
-        patch("click.confirm", return_value=True),
-        patch("click.echo"),
-    ):
+    with patch("skeinminder.graph.nodes.recommend") as mock_rec:
         mock_rec.return_value = {"recommendations": canned}
-        graph = build_graph()
-        result = graph.invoke(
-            _make_state(
-                mode="",
-                user_goal=None,
-                normalized_stash=[],  # empty → filtered_stash = [] → low confidence
-            ),
-            config={"configurable": {"thread_id": "test"}},
-        )
+        graph = _run_to_interrupt(checkpointer, thread_id)
+        result = graph.invoke(Command(resume=True), config=config)
 
-    assert result["filter_confidence"] == "low"
     assert result["force_recommend"] is True
     assert result["recommendations"] is not None
     assert len(result["recommendations"]) == 3
 
 
-def test_graph_low_confidence_user_declines() -> None:
-    with patch("click.confirm", return_value=False), patch("click.echo"):
-        graph = build_graph()
-        result = graph.invoke(
-            _make_state(mode="", user_goal=None, normalized_stash=[]),
-            config={"configurable": {"thread_id": "test"}},
-        )
+def test_graph_low_confidence_exits_on_cancel() -> None:
+    """After Command(resume=False), graph exits with no recommendations."""
+    checkpointer = MemorySaver()
+    thread_id = "cancel-test"
+    config = {"configurable": {"thread_id": thread_id}}
 
-    assert result["filter_confidence"] == "low"
+    graph = _run_to_interrupt(checkpointer, thread_id)
+    result = graph.invoke(Command(resume=False), config=config)
+
     assert result["force_recommend"] is False
-    assert "No recommendations generated" in result["formatted_output"]
+    assert "No recommendations generated" in (result.get("formatted_output") or "")
