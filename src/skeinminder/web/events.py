@@ -118,8 +118,9 @@ async def stream_graph_events(
     then a final result event with enriched recommendations. Saves the result
     payload to last_run.json for /replay. Emits an error event on failure.
 
-    Note: if the low_confidence_output node is reached (unusual with fixture
-    data), it will block waiting for stdin input — this is a Phase 9 concern.
+    Note: if the low_confidence_output node is reached, the graph pauses at
+    interrupt() and must be resumed via Command(resume=bool) — Task 4 wires
+    this into the SSE stream.
     """
     initial_state: GraphState = {
         "user_input": goal,
