@@ -151,7 +151,7 @@ supervisor → [project_first_filter | stash_first_filter]
              low:  low_confidence_output → (force_recommend?) pattern_search → recommend | END
 ```
 
-- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs; detects temporal phrases ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True`. Phase 13 will allow the web UI to pre-set `mode` in `GraphState`; when mode is already set, supervisor skips classification but still runs filter extraction.
+- **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs; detects temporal phrases ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True`. Phase 14a will allow the web UI to pre-set `mode` in `GraphState`; when mode is already set, supervisor skips classification but still runs filter extraction.
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords. Sort order: `added_date` ascending (oldest first) when `oldest_first=True`, otherwise `yards_total` descending.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `pattern_search` or `low_confidence_output` accordingly.
 - **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
