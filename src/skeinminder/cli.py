@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import click
@@ -114,32 +115,61 @@ def _run_recommend(
     ravelry_username: str,
     use_fixture: bool,
 ) -> str:
-    """Run the recommendation graph and return formatted output as a string."""
+    """Run the recommendation graph and return formatted output as a string.
+
+    Handles the low-confidence interrupt by prompting the user with click.confirm
+    and resuming or aborting the graph accordingly.
+    """
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.types import Command
+
     from skeinminder.graph.graph import build_graph
+    from skeinminder.graph.state import GraphState
 
     langfuse_context.update_current_trace(
         input={"user_goal": goal},
         tags=["cli"],
     )
-    graph = build_graph()
-    result = graph.invoke(
-        {
-            "user_input": goal,
-            "normalized_stash": stash,
-            "filtered_stash": [],
-            "mode": "",
-            "user_goal": None,
-            "stash_filter": None,
-            "recommendations": None,
-            "requires_approval": False,
-            "formatted_output": None,
-            "filter_confidence": "",
-            "force_recommend": False,
-            "ravelry_username": ravelry_username,
-            "use_fixture": use_fixture,
-            "pattern_candidates": [],
-        }
-    )
+
+    checkpointer = MemorySaver()
+    thread_id = str(uuid.uuid4())
+    config = RunnableConfig(configurable={"thread_id": thread_id})
+    graph = build_graph(checkpointer=checkpointer)
+
+    initial_state: GraphState = {
+        "user_input": goal,
+        "normalized_stash": stash,
+        "filtered_stash": [],
+        "mode": "",
+        "user_goal": None,
+        "stash_filter": None,
+        "recommendations": None,
+        "requires_approval": False,
+        "formatted_output": None,
+        "filter_confidence": "",
+        "force_recommend": False,
+        "ravelry_username": ravelry_username,
+        "use_fixture": use_fixture,
+        "pattern_candidates": [],
+    }
+
+    result = graph.invoke(initial_state, config=config)
+
+    # Detect low-confidence interrupt
+    graph_state = graph.get_state(config)
+    if graph_state.next:
+        for task in graph_state.tasks:
+            for interrupt_val in task.interrupts:
+                message = interrupt_val.value.get("message", "Low confidence results.")
+                click.echo(message)
+                break
+
+        proceed = click.confirm(
+            "\nGet recommendations using available yarn anyway?", default=False
+        )
+        result = graph.invoke(Command(resume=proceed), config=config)
+
     output: str = result.get("formatted_output") or "No recommendations generated."
     langfuse_context.update_current_trace(output={"formatted_output": output})
     return output

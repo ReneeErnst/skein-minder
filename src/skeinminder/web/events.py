@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from langfuse.decorators import langfuse_context, observe
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.state import GraphState, Recommendation
@@ -79,26 +81,63 @@ async def _invoke_graph(
     graph: Any,
     initial_state: GraphState,
     *,
+    config: dict[str, Any],
     goal: str,
-    event_queue: "asyncio.Queue[tuple[str, Any]]",
+    event_queue: asyncio.Queue[tuple[str, Any]],
+    resume_future: asyncio.Future[bool] | None,
 ) -> None:
-    """Run the LangGraph pipeline inside a Langfuse trace, feeding events to a queue.
+    """Run the complete LangGraph lifecycle under a single Langfuse trace.
 
-    Creates the root 'skeinminder-recommend' trace so all node @observe calls
-    nest under it as spans rather than creating separate top-level traces. Signals
-    completion with a ("done", None) sentinel, or ("error", exc) on failure.
+    Handles initial run, optional interrupt pause, and optional resume in one call.
+    Awaiting resume_future here (not in stream_graph_events) keeps the full session
+    under one trace and eliminates the need for a second _invoke_graph call on resume.
+
+    Signals put on event_queue:
+      ("event", event)       — raw LangGraph event to forward to SSE
+      ("interrupted", dict)  — graph paused; dict is the interrupt() payload
+      ("cancelled", None)    — user declined or client disconnected (future -> False)
+      ("done", None)         — graph completed (normal completion or after resume)
+      ("error", exc)         — unhandled exception
     """
     langfuse_context.update_current_trace(
         input={"user_goal": goal},
         tags=["web"],
     )
     try:
-        async for event in graph.astream_events(initial_state, version="v2"):
+        async for event in graph.astream_events(
+            initial_state, config=config, version="v2"
+        ):
             await event_queue.put(("event", event))
+
+        state = graph.get_state(config)
+        if not state.next:
+            await event_queue.put(("done", None))
+            return
+
+        interrupt_payload: dict[str, Any] = {}
+        for task in state.tasks:
+            for interrupt_val in task.interrupts:
+                interrupt_payload = interrupt_val.value
+                break
+        await event_queue.put(("interrupted", interrupt_payload))
+
+        decision = False
+        if resume_future is not None:
+            decision = await resume_future
+
+        if not decision:
+            await event_queue.put(("cancelled", None))
+            return
+
+        async for event in graph.astream_events(
+            Command(resume=True), config=config, version="v2"
+        ):
+            await event_queue.put(("event", event))
+
+        await event_queue.put(("done", None))
+
     except Exception as exc:
         await event_queue.put(("error", exc))
-    finally:
-        await event_queue.put(("done", None))
 
 
 async def stream_graph_events(
@@ -106,16 +145,22 @@ async def stream_graph_events(
     stash: list[StashItem],
     ravelry_username: str,
     use_fixture: bool,
+    *,
+    thread_id: str,
+    resume_future: asyncio.Future[bool] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Run the LangGraph pipeline and yield SSE-formatted event strings.
 
-    Emits node_start/node_complete for each known graph node as it executes,
-    then a final result event with enriched recommendations. Saves the result
-    payload to last_run.json for /replay. Emits an error event on failure.
-
-    Note: if the low_confidence_output node is reached (unusual with fixture
-    data), it will block waiting for stdin input — this is a Phase 9 concern.
+    The SSE connection stays open if the graph pauses at interrupt — _invoke_graph
+    blocks on resume_future while this generator continues to await queue.get().
+    Emits node_start/node_complete for known nodes, 'pause' on interrupt, 'cancelled'
+    on decline or disconnect, and a final 'result' event on success.
+    Saves the result payload to last_run.json for /replay.
     """
+    config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+    checkpointer = MemorySaver()
+    graph = build_graph(checkpointer=checkpointer)
+
     initial_state: GraphState = {
         "user_input": goal,
         "normalized_stash": stash,
@@ -133,25 +178,40 @@ async def stream_graph_events(
         "pattern_candidates": [],
     }
 
-    graph = build_graph()
     event_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     recommendations: list[Recommendation] = []
     pattern_candidates: list[PatternSummary] = []
     formatted_output = ""
 
     graph_task = asyncio.create_task(
-        _invoke_graph(graph, initial_state, goal=goal, event_queue=event_queue)
+        _invoke_graph(
+            graph,
+            initial_state,
+            config=config,
+            goal=goal,
+            event_queue=event_queue,
+            resume_future=resume_future,
+        )
     )
 
     while True:
         kind, payload = await event_queue.get()
+
         if kind == "done":
             break
+        if kind == "cancelled":
+            yield _sse({"type": "cancelled", "message": "Run cancelled."})
+            await graph_task
+            return
         if kind == "error":
             yield _sse({"type": "error", "message": str(payload)})
             await graph_task
             return
+        if kind == "interrupted":
+            yield _sse({"type": "pause", **payload})
+            continue
 
+        # kind == "event": raw LangGraph event
         event = payload
         event_type: str = event.get("event", "")
         node: str = event.get("metadata", {}).get("langgraph_node", "")

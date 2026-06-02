@@ -15,7 +15,7 @@ flowchart TD
     PFF["project_first_filter\ngoal → yarn candidates"]
     SFF["stash_first_filter\nyarn → project candidates"]
     AQ["assess_filter_quality\nhigh / low confidence"]
-    LCO["low_confidence_output\nwarn + confirm"]
+    LCO["low_confidence_output\ninterrupt · await human"]
     PS["pattern_search\nlibrary · free · popular · batch detail"]
     Rec["recommend\nClaude · prompt caching · pattern pairing"]
     Fmt["format_output\nyarn + pattern + URL"]
@@ -27,11 +27,12 @@ flowchart TD
     SFF --> AQ
     AQ -->|high| PS
     AQ -->|low| LCO
-    LCO -->|confirmed| PS
-    LCO -->|declined| END(["END"])
+    LCO -->|"✅ approved"| PS
+    LCO -->|"❌ cancelled"| END(["END"])
     PS --> Rec
     Rec --> Fmt
     Fmt --> CLI(["skeinminder recommend"])
+    Fmt --> Web(["web UI · http://localhost:8000"])
 ```
 
 Every node is instrumented with Langfuse `@observe` spans. Run `docker compose up -d` to stand up a local Langfuse instance and see traces in the UI.
@@ -67,6 +68,14 @@ flowchart TD
         DateFilter["Stash Date Filtering\nadded_date · oldest_first · temporal keyword detection"]
     end
 
+    subgraph built7 ["✅ Phase 9 — built"]
+        PatternQuality["Pattern Search Quality\npc= category filter · weight priority · adjacency pre-filter"]
+    end
+
+    subgraph built8 ["✅ Phase 10a — built"]
+        InterruptMigration["Interrupt Migration\ninterrupt() · MemorySaver · /approve · /cancel · pause SSE"]
+    end
+
     subgraph future ["📋 Phases 11–12 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
@@ -74,7 +83,7 @@ flowchart TD
 
     Stash --> Norm --> Graph --> Obs --> Eval
     Eval --> PatternData --> PatternSearch --> WebUI --> DateFilter
-    DateFilter --> Gate -->|"✅ approved"| Writer
+    DateFilter --> PatternQuality --> InterruptMigration --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 
 ```
@@ -107,8 +116,8 @@ flowchart TD
 | 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
 | 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
 | 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | ✅ Complete |
-| 9 | Pattern search quality (category filtering, weight targeting, candidate pre-filtering) | 🔄 In progress |
-| 10a | Interrupt migration + MemorySaver checkpointer | 📋 Planned |
+| 9 | Pattern search quality (category filtering, weight targeting, candidate pre-filtering) | ✅ Complete |
+| 10a | Interrupt migration + MemorySaver checkpointer | ✅ Complete |
 | 10b | LLM streaming + server polish | 📋 Planned |
 | 10c | LLM input hardening (prompt injection defense, context limits, XSS fix) | 📋 Planned |
 | 11 | Human approval checkpoint (interrupt/resume, approval gate) | 📋 Planned |
@@ -182,7 +191,10 @@ Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinmi
 
 ### Eval suite
 
-The eval suite has two layers: deterministic assertions (fast, no LLM, CI-safe) and LLM-as-judge scoring (logged to Langfuse).
+The eval suite has two layers:
+
+- **Deterministic assertions** (CI-safe, no LLM): recommended stash IDs are a subset of the input stash (no hallucination), no weight mixing across recommendations, recommendation count in range, `filter_confidence` correct for the scenario.
+- **LLM-as-judge** (manual, pre-demo): scores each result on `fit_score` (does the yarn suit the goal?) and `reasoning_score` (is the justification coherent?), both 1–5, logged as named Langfuse scores on the corresponding trace.
 
 ```bash
 # First-time setup: create the Langfuse dataset and upsert golden examples

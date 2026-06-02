@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -204,7 +205,8 @@ def run_example(example: EvalExample) -> GraphState:
             "ravelry_username": "fixture_user",
             "use_fixture": True,
             "pattern_candidates": [],
-        }
+        },
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
     )
     return cast(GraphState, result)
 

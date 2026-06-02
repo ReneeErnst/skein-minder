@@ -44,18 +44,20 @@ def test_replay_returns_saved_payload(
     assert response.json()["formatted_output"] == "test"
 
 
-def test_approve_endpoint_accepts_any_id(normalized_stash: list[Any]) -> None:
+def test_approve_returns_404_for_unknown_stream(normalized_stash: list[Any]) -> None:
+    """Approve returns 404 when the stream_id is not a live run."""
     app = create_app(normalized_stash, "test_user", use_fixture=True)
     client = TestClient(app)
-    response = client.post("/approve/some-stream-id")
-    assert response.status_code == 202
+    response = client.post("/approve/nonexistent-id")
+    assert response.status_code == 404
 
 
-def test_cancel_endpoint_accepts_any_id(normalized_stash: list[Any]) -> None:
+def test_cancel_returns_404_for_unknown_stream(normalized_stash: list[Any]) -> None:
+    """Cancel returns 404 when the stream_id is not a live run."""
     app = create_app(normalized_stash, "test_user", use_fixture=True)
     client = TestClient(app)
-    response = client.post("/cancel/some-stream-id")
-    assert response.status_code == 202
+    response = client.post("/cancel/nonexistent-id")
+    assert response.status_code == 404
 
 
 def test_stream_unknown_id_returns_404(normalized_stash: list[Any]) -> None:

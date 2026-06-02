@@ -6,9 +6,8 @@ import os
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-import click
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langfuse.decorators import (
@@ -16,6 +15,7 @@ from langfuse.decorators import (
     observe,
 )
 from langfuse.model import ModelUsage
+from langgraph.types import interrupt
 from pydantic import BaseModel
 
 from skeinminder.graph.state import GraphState, Recommendation, StashFilter
@@ -481,11 +481,12 @@ def pattern_search(state: GraphState) -> dict[str, Any]:
 
 @observe(name="low_confidence_output")
 def low_confidence_output(state: GraphState) -> dict[str, Any]:
-    """Summarise what the filter found and ask the user whether to proceed anyway.
+    """Pause graph for user confirmation on low-confidence filter results.
 
-    Prints the filtered items (or a 'nothing matched' message), then prompts via
-    click.confirm. Returns force_recommend=True if the user wants to continue,
-    or sets formatted_output to an exit message if not.
+    Calls interrupt() with a summary payload so the CLI or web UI can display
+    the message and collect a user decision. Resumes with True (continue to
+    recommend) or False (exit to END). The resume value is provided via
+    Command(resume=<bool>) from the CLI or web approval endpoint.
     """
     filtered = state["filtered_stash"]
     langfuse_context.update_current_observation(
@@ -502,16 +503,21 @@ def low_confidence_output(state: GraphState) -> dict[str, Any]:
             )
     else:
         lines.append("\nNo yarn in your stash matched the filters for this goal.")
-
     lines.append(
         "\nNote: a future version of SkeinMinder will be able to suggest yarn"
         " to purchase."
     )
-    click.echo("\n".join(lines))
 
-    proceed = click.confirm(
-        "\nGet recommendations using available yarn anyway?", default=False
+    proceed: bool = cast(
+        bool,
+        interrupt(
+            {
+                "message": "\n".join(lines),
+                "candidate_count": len(filtered),
+            }
+        ),
     )
+
     if proceed:
         langfuse_context.update_current_observation(metadata={"force_recommend": True})
         return {"force_recommend": True}

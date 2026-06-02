@@ -132,7 +132,7 @@ documents the planned remediation: expand the keyword set first (covers most par
 sentence-transformer embedding classifier as a fallback (a ~80MB model that runs in ~10–30ms on CPU with no network 
 call). A full LLM call for this task would be disproportionate.
 
-C**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
+**At scale:** Phase 14a's guided UX wizard bypasses the supervisor entirely for Modes 2 and 3 — the user's explicit mode
 selection pre-sets `mode` in `GraphState`, and the supervisor skips classification. That's the right long-term 
 direction: move intent disambiguation to the UI rather than making the NLP harder.
 
@@ -224,13 +224,13 @@ renders static cards.
  mode-specific input → results) and Phase 11 approval modal will push against the limits of manual DOM management. The 
  right point to evaluate a lightweight framework (Preact, Alpine.js) is when Phase 14a ships — not before.
 
-SSE is also one-directional: the server can push events to the client, but the client can't send mid-stream messages 
-back. The approval flow (Phase 10) will need a separate HTTP POST (`/approve/{id}`) to send the user's decision back. 
-That's already stubbed.
+SSE is also one-directional: the server can push events to the client, but the client can't send mid-stream messages
+back. Phase 10a implemented `POST /approve/{id}` and `POST /cancel/{id}` to relay the user's decision back to the
+paused graph; both return 404 for unknown run IDs.
 
-**At scale:** Multi-user use would require replacing `_streams` (an in-process dict of `asyncio.Queue` objects) with a 
-Redis pub/sub or similar external message bus. The current design uses a stream TTL eviction task (Phase 10b) to prevent
-unbounded memory growth, but it's inherently single-process.
+**At scale:** Multi-user use would require replacing `_streams` (an in-process dict of `asyncio.Queue` objects) with a
+Redis pub/sub or similar external message bus. Phase 10b plans to add a TTL-based eviction task to prevent unbounded
+memory growth in `_streams`; until then, the dict can grow without bound in a long-running server process.
 
 ---
 
@@ -281,8 +281,10 @@ cached users is 1–2GB in Redis — manageable.
 
 `GraphState` carries a `requires_approval: bool` field. The rule is: no node writes to Ravelry, Google Calendar, 
 Notion, or any external service without first setting `requires_approval = True` and pausing for human confirmation. 
-Phase 10 wires this using LangGraph's `interrupt()` mechanism and a `MemorySaver` checkpointer. Today it is a stub: 
-`requires_approval` is always `False` and the `/approve` and `/cancel` endpoints return 202 without doing anything.
+Phase 10a wired the interrupt/resume infrastructure: `MemorySaver` checkpointer in `build_graph()`, `interrupt()` in 
+`low_confidence_output`, and `POST /approve/{id}` / `POST /cancel/{id}` resolving the graph's resume future (returning 
+404 for unknown IDs). `requires_approval` is still always `False` — the Phase 11 approval gate after `format_output` 
+is the remaining stub before any write nodes are added.
 
 **Why:** The core product claim is "it only writes after you approve." If that's not true in the implementation, the 
 whole architecture story falls apart. The design rule is stated explicitly here so that every future write tool is 
@@ -290,9 +292,9 @@ built with the approval gate from the start, not retrofitted after the fact. The
 multi-turn conversation within a session — "show me simpler options" can branch from the paused state rather than 
 starting a new run.
 
-**Tradeoff:** Until Phase 10 ships, this is a promise in comments. The approval modal in the web UI (the 
-`node_awaiting_approval` SSE event and the frontend handler) is built but not triggered. Anyone reviewing the code 
-needs to know this is intentional deferred work, not an overlooked gap.
+**Tradeoff:** The interrupt/resume plumbing is live; the approval gate itself is not. Anyone reviewing the code should 
+know that `requires_approval=False` and the absence of write nodes is intentional deferred work (Phase 11), not an 
+overlooked gap.
 
 **At scale:** `MemorySaver` (in-process) works for a single server instance. A multi-user deployment requires 
 `PostgresSaver` or equivalent so that graph state survives across requests and server restarts. The Postgres instance 
@@ -319,6 +321,42 @@ documented for anyone extending the prompt.
 
 **At scale:** If the system prompt grows substantially (e.g., domain knowledge injected per craft type), caching the 
 stable base and appending dynamic content as a separate message segment is the right pattern.
+
+---
+
+### Two-layer eval: deterministic assertions + LLM-as-judge
+
+The eval suite (`eval.py`, `skeinminder eval`) has two distinct layers that run at different cadences. The first layer
+is deterministic: it asserts that recommended stash IDs are a subset of the filtered stash (not hallucinated), that no
+recommendation mixes incompatible yarn weights, that the recommendation count falls within the expected range, and that
+`filter_confidence` is set correctly for the scenario. These tests are fast, require no LLM, and run in CI on every PR.
+The second layer is LLM-as-judge: a separate `judge_example()` call scores each result on two dimensions (`fit_score`:
+does the yarn actually suit the stated goal; `reasoning_score`: is the justification coherent and accurate), each 1–5.
+Both scores are logged as named Langfuse scores on the corresponding trace. LLM-as-judge is not run in CI — it requires
+`ANTHROPIC_API_KEY` and is invoked manually via `skeinminder eval` before demos or after significant prompt changes.
+
+**Why:** The two layers test different failure modes. Deterministic assertions catch objective errors — hallucinated
+stash IDs, weight mismatches, missing output fields — that a rule can state and a computer can check. These failures
+indicate bugs, not quality regressions, and belong in CI. LLM-as-judge catches subjective quality failures: a
+recommendation that correctly cites a real stash yarn but argues it's a good sweater candidate when it has 200 yards of
+laceweight. No rule can express that failure; a scoring LLM can. Running the judge in CI would add latency and cost to
+every PR for a signal that barely changes on most code changes — the right cadence is manual, pre-demo. Logging scores
+to Langfuse alongside the trace means the judge verdict, the full graph state that produced it, and the token cost of
+the run all live in one place and are comparable across runs.
+
+**Tradeoff:** LLM-as-judge scores are non-deterministic. The same recommendation can score differently on repeated
+runs, particularly at the boundary between 3 and 4. The judge also scores the recommendation set as a whole, not each
+recommendation individually, which means a set with one strong and two weak recommendations gets one blended score
+that obscures which item failed. The current two dimensions (fit, reasoning) can't distinguish "great yarn, weak
+rationale" from "weak yarn, great rationale." There's also a same-family bias risk: the judge and the system under
+test both use Claude, which may produce leniently correlated scores. Phase 13 addresses two of these gaps — it adds a
+third dimension (pattern relevance: does the recommended Ravelry pattern plausibly suit the stash yarn?) and a
+deliberately failing golden example, making the judge a tool for exposing regressions, not just confirming passes.
+
+**At scale:** Three golden examples are enough for a demo. A production quality gate would need a larger golden set
+with held-out failing cases to make the judge discriminating. The infrastructure already scales: `judge_example()` is
+`@observe`-decorated, new examples are fixture files, and Langfuse stores score history across runs. Phase 13's
+pattern relevance dimension is the next planned extension.
 
 ---
 

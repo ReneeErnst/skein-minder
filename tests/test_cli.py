@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from skeinminder.cli import cli
+from skeinminder.cli import _run_recommend, cli
 from skeinminder.graph.state import Recommendation
 
 
@@ -80,3 +80,43 @@ def test_recommend_no_fixture_fails_without_credentials(
     runner = CliRunner()
     result = runner.invoke(cli, ["recommend", "I want a cardigan"])
     assert result.exit_code != 0
+
+
+def test_run_recommend_handles_interrupt_approve() -> None:
+    """CLI prompts with click.confirm when graph hits interrupt; resumes on 'yes'."""
+    canned = [
+        Recommendation(
+            title="Project 1",
+            rationale="Works.",
+            risks=[],
+            yarn_candidate_ids=[],
+        )
+    ]
+
+    with (
+        patch("skeinminder.graph.nodes.recommend") as mock_rec,
+        patch("click.confirm", return_value=True) as mock_confirm,
+    ):
+        mock_rec.return_value = {"recommendations": canned}
+        result = _run_recommend(
+            "I want a cardigan",
+            [],  # empty stash → low confidence path
+            ravelry_username="test_user",
+            use_fixture=True,
+        )
+
+    mock_confirm.assert_called_once()
+    assert "Project recommendations" in result
+
+
+def test_run_recommend_handles_interrupt_cancel() -> None:
+    """CLI returns abort message when user declines at interrupt prompt."""
+    with patch("click.confirm", return_value=False):
+        result = _run_recommend(
+            "I want a cardigan",
+            [],  # empty stash → low confidence path
+            ravelry_username="test_user",
+            use_fixture=True,
+        )
+
+    assert "No recommendations generated" in result

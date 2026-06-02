@@ -41,12 +41,9 @@ def create_app(
     ravelry_username: str,
     use_fixture: bool = False,
 ) -> FastAPI:
-    """Create and configure the SkeinMinder FastAPI app.
-
-    Stash is loaded once at startup and shared across all requests.
-    Each POST /recommend creates an asyncio.Queue for SSE delivery.
-    """
+    """Create and configure the SkeinMinder FastAPI app."""
     _streams: dict[str, asyncio.Queue[str | None]] = {}
+    _resume_futures: dict[str, asyncio.Future[bool]] = {}
 
     app = FastAPI(title="SkeinMinder")
 
@@ -54,19 +51,27 @@ def create_app(
         queue = _streams.get(stream_id)
         if queue is None:
             return
+        future = _resume_futures.get(stream_id)
         try:
             async for event in stream_graph_events(
-                goal, stash, ravelry_username, req_use_fixture
+                goal,
+                stash,
+                ravelry_username,
+                req_use_fixture,
+                thread_id=stream_id,
+                resume_future=future,
             ):
                 await queue.put(event)
         finally:
             await queue.put(None)
+            _resume_futures.pop(stream_id, None)
 
     @app.post("/recommend")
     async def start_recommend(request: _RecommendRequest) -> dict[str, str]:
         """Start a graph run; events stream via GET /stream/{stream_id}."""
         stream_id = str(uuid.uuid4())
         _streams[stream_id] = asyncio.Queue()
+        _resume_futures[stream_id] = asyncio.get_running_loop().create_future()
         asyncio.create_task(
             _run_graph(stream_id, request.goal, request.use_fixture or use_fixture)
         )
@@ -88,17 +93,34 @@ def create_app(
                     yield event
             finally:
                 _streams.pop(stream_id, None)
+                future = _resume_futures.get(stream_id)
+                if future is not None and not future.done():
+                    future.set_result(False)
 
         return StreamingResponse(generator(), media_type="text/event-stream")
 
     @app.post("/approve/{stream_id}", status_code=202)
     async def approve_run(stream_id: str) -> dict[str, str]:
-        """Phase 9 seam: approve a paused run. Not yet wired to graph interrupt."""
+        """Resume a paused graph run with user approval."""
+        future = _resume_futures.get(stream_id)
+        if future is None:
+            raise HTTPException(
+                status_code=404, detail="No paused run found for this id"
+            )
+        if not future.done():
+            future.set_result(True)
         return {"status": "accepted"}
 
     @app.post("/cancel/{stream_id}", status_code=202)
     async def cancel_run(stream_id: str) -> dict[str, str]:
-        """Phase 9 seam: cancel a paused run. Not yet wired to graph interrupt."""
+        """Cancel a paused graph run."""
+        future = _resume_futures.get(stream_id)
+        if future is None:
+            raise HTTPException(
+                status_code=404, detail="No paused run found for this id"
+            )
+        if not future.done():
+            future.set_result(False)
         return {"status": "accepted"}
 
     @app.get("/replay")
