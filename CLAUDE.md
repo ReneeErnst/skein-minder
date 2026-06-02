@@ -74,7 +74,7 @@ LANGFUSE_HOST=          # defaults to http://localhost:3000
 
 Run `docker compose up -d` first. The pre-seeded keys (`lf-pk-skeinminder-local` / `lf-sk-skeinminder-local`) match the values already in `.env.example`.
 
-## What's built (Phases 1–8)
+## What's built (Phases 1–10a)
 
 ```
 src/skeinminder/
@@ -100,18 +100,25 @@ src/skeinminder/
                    #   Phase 8: StashFilter gains oldest_first: bool = False
     graph.py       # build_graph() — compiles the LangGraph StateGraph
                    #   Phase 6b: pattern_search wired in on both routing paths
+                   #   Phase 10a: + optional checkpointer param (defaults to MemorySaver())
     nodes.py       # supervisor, project_first_filter, stash_first_filter, assess_filter_quality,
                    #   low_confidence_output, pattern_search, recommend, format_output
                    #   Phase 6b: + pattern_search node; recommend + format_output updated
                    #   Phase 8: + _TEMPORAL_TRIGGERS, _date_sort_key; supervisor sets oldest_first;
                    #            filter nodes sort by added_date when oldest_first=True
+                   #   Phase 9: + _GARMENT_TO_PC; _extract_garment_pc returns permalink;
+                   #            pattern_search passes pc=; weight priority fix; weight-adjacency pre-filter
+                   #   Phase 10a: low_confidence_output uses interrupt() instead of click.confirm()
   web/             # Phase 7: browser UI
     __init__.py
     events.py      # stream_graph_events() async generator; _build_result_payload(); _sse()
                    #   bridges LangGraph astream_events → SSE; saves last_run.json for /replay
+                   #   Phase 10a: _invoke_graph handles full interrupt lifecycle (run→pause→resume);
+                   #              stream_graph_events yields pause SSE; accepts thread_id + resume_future
     server.py      # create_app(stash, ravelry_username, use_fixture) FastAPI factory
                    #   endpoints: POST /recommend, GET /stream/{id}, GET /replay,
                    #   POST /approve/{id}, POST /cancel/{id}, GET / (static)
+                   #   Phase 10a: _resume_futures dict; approve/cancel resolve future (404 unknown IDs)
     static/
       index.html   # three-phase page (phase-input / phase-running / phase-results)
       app.js       # SSE consumer, phase controller, card renderer
@@ -123,14 +130,17 @@ src/skeinminder/
   cli.py           # `skeinminder stash`, `skeinminder recommend`, `skeinminder eval`
                    #   Phase 6b: _load_stash returns (stash, username); _run_recommend takes ravelry_username + use_fixture
                    #   Phase 7: + `skeinminder web [--port] [--fixture]`
+                   #   Phase 10a: _run_recommend creates MemorySaver, detects interrupt, resumes with click.confirm()
   eval.py          # load_examples(), run_example(), assert_example(), judge_example(), format_table()
                    #   Phase 6b: EvalExpected gains pattern_ids_from_candidates; run_example uses fixture transport
   observability.py # get_langfuse_client() — returns None when credentials are absent (no-op in tests)
 tests/
   conftest.py      # fixture_client and fixture_transport fixtures (FixtureTransport now lives in src/)
   test_eval.py     # unit tests (CI) + @pytest.mark.eval integration tests (real LLM)
-  test_web_events.py  # Phase 7: 9 tests for _sse, _build_result_payload, stream_graph_events
-  test_web_server.py  # Phase 7: 6 endpoint tests via FastAPI TestClient
+  test_web_events.py  # Phase 7: tests for _sse, _build_result_payload, stream_graph_events
+                      #   Phase 10a: + pause/cancelled SSE event test; get_state mock in existing tests
+  test_web_server.py  # Phase 7: endpoint tests via FastAPI TestClient
+                      #   Phase 10a: approve/cancel return 404 for unknown IDs
   fixtures/        # sanitized JSON snapshots used by all tests (no live API needed)
   fixtures/eval/   # three golden examples (project-first, stash-first, low-confidence); example-schema.json documents the shape
   fixtures/pattern_search_free.json      # Phase 6a: free-pattern search fixture
@@ -154,7 +164,7 @@ supervisor → [project_first_filter | stash_first_filter]
 - **supervisor**: classifies user input into `project_first` (goal-driven) or `stash_first` (yarn-driven) mode; extracts weight/yardage into `StashFilter` for stash-first inputs; detects temporal phrases ("oldest", "longest", "been sitting", "first acquired") and sets `oldest_first=True`. Phase 14a will allow the web UI to pre-set `mode` in `GraphState`; when mode is already set, supervisor skips classification but still runs filter extraction.
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates using `StashFilter` criteria or goal keywords. Sort order: `added_date` ascending (oldest first) when `oldest_first=True`, otherwise `yards_total` descending.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"` based on candidate count; routes to `pattern_search` or `low_confidence_output` accordingly.
-- **low_confidence_output**: warns the user about low-quality filter results and prompts via `click.confirm`; sets `force_recommend` to continue or exits to `END`.
+- **low_confidence_output**: pauses the graph via `interrupt()` with a `{"message", "candidate_count"}` payload; sets `force_recommend` to continue (resume=True) or exits to `END` (resume=False).
 - **pattern_search**: deterministic node that runs four Ravelry API calls (library IDs, free search, popular search, batch detail), each independently graceful. Writes `pattern_candidates` sorted library→free→popular, capped at 10. Uses `FixtureTransport` when `use_fixture=True`; falls back to live credentials otherwise. Full failure writes `[]`, which causes `recommend` to produce abstract archetypes.
 - **recommend**: calls the LLM (model from `SKEINMINDER_MODEL` env var) with a system-prompt-cached prompt; conditionally includes a formatted pattern list and pairing rule when `pattern_candidates` is non-empty. Returns up to 3 `Recommendation` objects via structured output.
 - **format_output**: renders recommendations as a plain-text CLI report, resolving stash IDs back to yarn names. Renders a `Pattern: <name> — <url>` line when pattern fields are set.
@@ -175,8 +185,8 @@ In tests, `recommend` is patched at `skeinminder.graph.nodes.recommend` — the 
 
 - Raw models (`Raw*`) map directly to API JSON. `StashItem` in `normalizer.py` is the normalized domain model — always work with `StashItem` inside the app, not raw models.
 - Tests use `FixtureTransport` (injected into `RavelryClient` via the `transport=` kwarg) — never hit the live Ravelry API in tests.
-- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the approval gate is a Phase 10 stub).
-- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are Phase 10 stubs — they accept requests but are not yet wired to the graph interrupt mechanism.
+- No write to Ravelry or external services without an explicit human approval checkpoint (`requires_approval` flag in `GraphState`; currently always `False` — the full approval gate is a Phase 11 concern).
+- The web server's `POST /approve/{id}` and `POST /cancel/{id}` endpoints are wired to the graph interrupt mechanism (Phase 10a); the Phase 11 approval gate after `format_output` is the remaining stub.
 - Every future write tool needs a dry-run mode.
 - The web UI is being extended to a three-mode wizard (Phases 13–14): Mode 1 open/allow-purchase, Mode 2 stash-constrained project-first, Mode 3 yarn-specific stash-first. New `GraphState` fields `allow_purchase: bool` (Phase 14) will be added; avoid hardcoding assumptions that recommendations must always draw from stash yarn.
 

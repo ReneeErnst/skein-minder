@@ -281,8 +281,10 @@ cached users is 1–2GB in Redis — manageable.
 
 `GraphState` carries a `requires_approval: bool` field. The rule is: no node writes to Ravelry, Google Calendar, 
 Notion, or any external service without first setting `requires_approval = True` and pausing for human confirmation. 
-Phase 10 wires this using LangGraph's `interrupt()` mechanism and a `MemorySaver` checkpointer. Today it is a stub: 
-`requires_approval` is always `False` and the `/approve` and `/cancel` endpoints return 202 without doing anything.
+Phase 10a wired the interrupt/resume infrastructure: `MemorySaver` checkpointer in `build_graph()`, `interrupt()` in 
+`low_confidence_output`, and `POST /approve/{id}` / `POST /cancel/{id}` resolving the graph's resume future (returning 
+404 for unknown IDs). `requires_approval` is still always `False` — the Phase 11 approval gate after `format_output` 
+is the remaining stub before any write nodes are added.
 
 **Why:** The core product claim is "it only writes after you approve." If that's not true in the implementation, the 
 whole architecture story falls apart. The design rule is stated explicitly here so that every future write tool is 
@@ -290,9 +292,9 @@ built with the approval gate from the start, not retrofitted after the fact. The
 multi-turn conversation within a session — "show me simpler options" can branch from the paused state rather than 
 starting a new run.
 
-**Tradeoff:** Until Phase 10 ships, this is a promise in comments. The approval modal in the web UI (the 
-`node_awaiting_approval` SSE event and the frontend handler) is built but not triggered. Anyone reviewing the code 
-needs to know this is intentional deferred work, not an overlooked gap.
+**Tradeoff:** The interrupt/resume plumbing is live; the approval gate itself is not. Anyone reviewing the code should 
+know that `requires_approval=False` and the absence of write nodes is intentional deferred work (Phase 11), not an 
+overlooked gap.
 
 **At scale:** `MemorySaver` (in-process) works for a single server instance. A multi-user deployment requires 
 `PostgresSaver` or equivalent so that graph state survives across requests and server restarts. The Postgres instance 

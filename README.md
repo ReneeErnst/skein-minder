@@ -67,6 +67,14 @@ flowchart TD
         DateFilter["Stash Date Filtering\nadded_date · oldest_first · temporal keyword detection"]
     end
 
+    subgraph built7 ["✅ Phase 9 — built"]
+        PatternQuality["Pattern Search Quality\npc= category filter · weight priority · adjacency pre-filter"]
+    end
+
+    subgraph built8 ["✅ Phase 10a — built"]
+        InterruptMigration["Interrupt Migration\ninterrupt() · MemorySaver · /approve · /cancel · pause SSE"]
+    end
+
     subgraph future ["📋 Phases 11–12 — planned"]
         Gate{{"Human Approval Gate"}}
         Writer["Ravelry Project Writer"]
@@ -74,7 +82,7 @@ flowchart TD
 
     Stash --> Norm --> Graph --> Obs --> Eval
     Eval --> PatternData --> PatternSearch --> WebUI --> DateFilter
-    DateFilter --> Gate -->|"✅ approved"| Writer
+    DateFilter --> PatternQuality --> InterruptMigration --> Gate -->|"✅ approved"| Writer
     Gate -->|"✏️ revise"| Graph
 
 ```
@@ -107,8 +115,8 @@ flowchart TD
 | 6b | Pattern graph integration (pattern_search node, yarn+pattern pairs) | ✅ Complete |
 | 7 | Web UI (FastAPI + SSE, vis-network graph animation, Ravelry-inspired styling) | ✅ Complete |
 | 8 | Stash date filtering (age-based sorting, `added_date` on `StashItem`) | ✅ Complete |
-| 9 | Pattern search quality (category filtering, weight targeting, candidate pre-filtering) | 🔄 In progress |
-| 10a | Interrupt migration + MemorySaver checkpointer | 📋 Planned |
+| 9 | Pattern search quality (category filtering, weight targeting, candidate pre-filtering) | ✅ Complete |
+| 10a | Interrupt migration + MemorySaver checkpointer | ✅ Complete |
 | 10b | LLM streaming + server polish | 📋 Planned |
 | 10c | LLM input hardening (prompt injection defense, context limits, XSS fix) | 📋 Planned |
 | 11 | Human approval checkpoint (interrupt/resume, approval gate) | 📋 Planned |

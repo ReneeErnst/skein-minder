@@ -1,6 +1,6 @@
 # SkeinMinder Research Notes
 
-_Last updated: 2026-05-31_
+_Last updated: 2026-06-01_
 
 ## Working project name
 
@@ -28,7 +28,7 @@ Cauldron notebooks, BigQuery, and GCS.
 
 ## Implementation status
 
-### Phases 0–8 ✅ ALL COMPLETE (merged to main, 211 tests passing)
+### Phases 0–10a ✅ ALL COMPLETE (250 tests passing; Phase 10a in PR #16)
 
 - **Phase 0**: Project setup — Python 3.13, uv, ruff, mypy strict, pytest, CI.
 - **Phase 1**: Ravelry read-only client — `RavelryClient` with Basic Auth/retry/pagination, raw Pydantic models, `FixtureTransport`, `skeinminder stash` CLI.
@@ -42,15 +42,17 @@ Cauldron notebooks, BigQuery, and GCS.
 - **Phase 5b**: Observability improvements — token cost tracking fixed (`as_type="generation"`, `include_raw=True`), stash truncated from spans, test traces suppressed via autouse fixture, Anthropic model pricing registered in Langfuse.
 - **Phase 6a**: Pattern data layer — `patterns.py` (`RawPattern`, `PatternSummary`, `normalize_pattern`), `FixtureTransport` extended for pattern endpoints, four pattern fixture files.
 - **Phase 6b**: Pattern graph integration — `pattern_search` node (deterministic, graceful), `pattern_candidates` in `GraphState`, pattern-aware `recommend` and `format_output`.
-- **Phase 7**: Web UI — FastAPI + SSE backend, vis-network graph animation, recommendation cards with pattern photos, `skeinminder web` CLI. `POST /approve` and `POST /cancel` are Phase 11 stubs.
+- **Phase 7**: Web UI — FastAPI + SSE backend, vis-network graph animation, recommendation cards with pattern photos, `skeinminder web` CLI. `POST /approve` and `POST /cancel` wired in Phase 10a.
 - **Phase 8**: Stash date filtering — `created_at` surfaced from Ravelry, `added_date` on `StashItem`, `oldest_first` sort order, temporal keyword detection in supervisor (`_TEMPORAL_TRIGGERS`).
+- **Phase 9**: Pattern search quality — `_GARMENT_TO_PC` keyword→permalink mapping, `pc=` filter passed to Ravelry search, weight selection priority fix (goal text → stash filter → modal stash → heaviest item), weight-adjacency pre-filter on `pattern_candidates`. Merged in PR #15.
+- **Phase 10a**: Interrupt migration + checkpointer — `low_confidence_output` migrated from `click.confirm()` to `interrupt()`; `MemorySaver` checkpointer wired into `build_graph()`; CLI handles interrupt/resume with `click.confirm()` in CLI context; `POST /approve/{id}` and `POST /cancel/{id}` wired (404 for unknown IDs); `stream_graph_events` yields `pause` SSE event and holds connection open during interrupt. PR #16.
 
 ---
 
 **Demo completion order.** To reach a strong live demo for a technical audience:
 
-1. **Phase 9** — pattern search quality (live runs currently return no pattern matches; most visible gap)
-2. **Phase 10a** — interrupt migration (`click.confirm` hangs the web UI — hard blocker; also wires MemorySaver)
+1. ~~**Phase 9** — pattern search quality~~ ✅ Done (PR #15)
+2. ~~**Phase 10a** — interrupt migration~~ ✅ Done (PR #16)
 3. **Phase 10b** — streaming + polish (LLM streaming, mode echo, graph pre-compilation, TTL eviction)
 4. **Phase 10c** — LLM input hardening (prompt injection defense, context limits, XSS fix in frontend)
 5. **Phase 11** — human approval (the product's core safety claim is today a stub)
@@ -60,38 +62,15 @@ Phases 12 and 14–19 strengthen the product but are not required for a compelli
 
 ---
 
-### Phase 9 — Pattern search: category filtering and weight targeting
+### Phase 9 — Pattern search: category filtering and weight targeting ✅ COMPLETE
 
-Goal: make pattern recommendations consistently appear in live runs by fixing the `pattern_search` node to use Ravelry's category taxonomy instead of free-text search, and correcting weight selection and candidate pre-filtering.
-
-Background: live testing showed a fingering-weight stash run returning 10 pattern candidates — all non-sweater garment types — and the LLM correctly declining to match any of them. Root cause: the search passes the full goal text as the free-text query with no category filter. `GET /pattern_categories/list.json` confirms a `pc=<permalink>` filter parameter exists (e.g., `pc=cardigan`, `pc=hat`, `pc=shawl-wrap`). See improvement backlog item 3 for the full keyword→permalink mapping and confirmed category IDs.
-
-Tasks:
-- Expand `_extract_garment_type` to cover the full common-knitting vocabulary — hat, sock, shawl, cowl, scarf, mittens, gloves, fingerless, slippers, headband, earwarmers, blanket, bag, tote, shrug, dress, and their common synonyms. Currently limited to 6 sweater-scale terms.
-- Return the Ravelry category permalink from the function (or add a parallel `_GARMENT_TO_PC` dict mapping the extracted keyword to its permalink). The permalink is what gets passed to the API.
-- In `pattern_search`, pass `pc=<permalink>` to `search_patterns` when a garment category is detected; fall back to free-text `query` with the goal string when no category is found (covers vague inputs like "something cozy" or "a gift").
-- Fix weight selection priority: (1) weight keyword found in the user's goal text via `find_weight_in_text`, (2) modal weight across filtered stash items, (3) heaviest-yardage item's weight (current behavior). This prevents the search from targeting the wrong weight when the stash spans multiple categories.
-- Pre-filter `pattern_candidates` to exclude patterns whose `weight_name` is more than one adjacent step from the dominant stash weight before writing to state. Library patterns span all weights and currently consume slots in the 10-candidate cap that belong to weight-matched patterns.
-
-Tests:
-- Parametrized unit tests for the expanded keyword → permalink mapping (one test per garment family is enough — not every synonym needs its own case).
-- Update `pattern_search` fixture tests to pass `pc` in the mock call assertions.
-- Tests for the weight selection priority fix (goal weight takes precedence over stash modal weight).
-- Tests for the weight-adjacency pre-filter (out-of-range patterns are excluded; adjacent-weight patterns are kept).
+Merged in PR #15. `_GARMENT_TO_PC` dict mapping knitting vocabulary to Ravelry category permalinks; `pc=` filter passed to `search_patterns`; weight selection priority (goal text → stash filter → modal stash → heaviest item); weight-adjacency pre-filter strips patterns more than one step from dominant stash weight before the 10-candidate cap.
 
 ---
 
-### Phase 10a — Interrupt migration + checkpointer
+### Phase 10a — Interrupt migration + checkpointer ✅ COMPLETE
 
-Goal: unblock the web UI on the low-confidence path, and lay the MemorySaver foundation Phase 11 depends on. This is the hard blocker; nothing in 10b or 11 can proceed until this is done.
-
-`low_confidence_output` uses `click.confirm()` — a blocking terminal call that is incompatible with the web UI and prevents clean testing of the low-confidence graph path. Migrating to LangGraph's `interrupt()` mechanism also requires wiring a `MemorySaver` checkpointer into `build_graph()`, which Phase 11 needs anyway.
-
-Tasks:
-- Replace `click.confirm()` in `low_confidence_output` with `interrupt()`. The interrupt value should include the low-confidence summary (what was found, candidate count) so the web UI can render a meaningful prompt rather than a generic pause.
-- Wire `MemorySaver` checkpointer into `build_graph()`; propagate `thread_id` through the CLI (`skeinminder recommend`) and web server (`POST /recommend` → `GET /stream/{id}`).
-- Wire the existing `/approve/{id}` stub to resume the paused thread via `graph.astream(Command(resume=True), config={"configurable": {"thread_id": id}})`. Wire `/cancel/{id}` to abort and clear the thread.
-- Update tests for the interrupt-based low-confidence path — both the approve (graph continues to `recommend`) and cancel (graph exits to `END`) paths.
+PR #16. `low_confidence_output` migrated from `click.confirm()` to `interrupt()` with a `{"message", "candidate_count"}` payload. `MemorySaver` checkpointer wired into `build_graph()` (optional param, defaults to fresh instance). CLI detects interrupt via `graph.get_state()` and calls `click.confirm()` in CLI context. Web: `_invoke_graph` handles full lifecycle (run → detect interrupt → await `resume_future` → resume or cancel) under one Langfuse trace; `POST /approve/{id}` resolves the future with `True`, `POST /cancel/{id}` with `False`; both return 404 for unknown IDs; `stream_graph_events` yields a `pause` SSE event on interrupt and holds the SSE connection open until resolved.
 
 ---
 
@@ -450,7 +429,7 @@ User goal / stash filter
 - **supervisor**: classifies input into `project_first` or `stash_first` mode; extracts weight/yardage into `StashFilter`; detects temporal phrases and sets `oldest_first`; respects pre-set `mode` in `GraphState` (skips classification, still runs filter extraction).
 - **project_first_filter / stash_first_filter**: filter `normalized_stash` down to ≤20 candidates; sort by `added_date` ascending when `oldest_first=True`, otherwise by `yards_total` descending.
 - **assess_filter_quality**: sets `filter_confidence` to `"high"` or `"low"`; routes to `pattern_search` or `low_confidence_output`.
-- **low_confidence_output**: warns user about low-quality filter results; currently uses `click.confirm()` — migrates to `interrupt()` in Phase 10a.
+- **low_confidence_output**: pauses the graph via `interrupt()` with a `{"message", "candidate_count"}` payload. CLI resumes with `click.confirm()`; web resumes via `POST /approve/{id}` or `POST /cancel/{id}`.
 - **pattern_search**: deterministic node, four Ravelry API calls (library IDs, free search, popular search, batch detail), each independently graceful. Writes `pattern_candidates` sorted library→free→popular, capped at 10.
 - **recommend**: calls the LLM with system-prompt-cached prompt; conditionally includes pattern list and pairing rule. Returns up to 3 `Recommendation` objects via structured output.
 - **format_output**: renders recommendations as a plain-text CLI report. Renders `Pattern: <name> — <url>` when pattern fields are set. Groups same-yarn skeins into one line; deduplicates yarn names.
