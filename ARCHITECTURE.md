@@ -324,6 +324,42 @@ stable base and appending dynamic content as a separate message segment is the r
 
 ---
 
+### Two-layer eval: deterministic assertions + LLM-as-judge
+
+The eval suite (`eval.py`, `skeinminder eval`) has two distinct layers that run at different cadences. The first layer
+is deterministic: it asserts that recommended stash IDs are a subset of the filtered stash (not hallucinated), that no
+recommendation mixes incompatible yarn weights, that the recommendation count falls within the expected range, and that
+`filter_confidence` is set correctly for the scenario. These tests are fast, require no LLM, and run in CI on every PR.
+The second layer is LLM-as-judge: a separate `judge_example()` call scores each result on two dimensions (`fit_score`:
+does the yarn actually suit the stated goal; `reasoning_score`: is the justification coherent and accurate), each 1–5.
+Both scores are logged as named Langfuse scores on the corresponding trace. LLM-as-judge is not run in CI — it requires
+`ANTHROPIC_API_KEY` and is invoked manually via `skeinminder eval` before demos or after significant prompt changes.
+
+**Why:** The two layers test different failure modes. Deterministic assertions catch objective errors — hallucinated
+stash IDs, weight mismatches, missing output fields — that a rule can state and a computer can check. These failures
+indicate bugs, not quality regressions, and belong in CI. LLM-as-judge catches subjective quality failures: a
+recommendation that correctly cites a real stash yarn but argues it's a good sweater candidate when it has 200 yards of
+laceweight. No rule can express that failure; a scoring LLM can. Running the judge in CI would add latency and cost to
+every PR for a signal that barely changes on most code changes — the right cadence is manual, pre-demo. Logging scores
+to Langfuse alongside the trace means the judge verdict, the full graph state that produced it, and the token cost of
+the run all live in one place and are comparable across runs.
+
+**Tradeoff:** LLM-as-judge scores are non-deterministic. The same recommendation can score differently on repeated
+runs, particularly at the boundary between 3 and 4. The judge also scores the recommendation set as a whole, not each
+recommendation individually, which means a set with one strong and two weak recommendations gets one blended score
+that obscures which item failed. The current two dimensions (fit, reasoning) can't distinguish "great yarn, weak
+rationale" from "weak yarn, great rationale." There's also a same-family bias risk: the judge and the system under
+test both use Claude, which may produce leniently correlated scores. Phase 13 addresses two of these gaps — it adds a
+third dimension (pattern relevance: does the recommended Ravelry pattern plausibly suit the stash yarn?) and a
+deliberately failing golden example, making the judge a tool for exposing regressions, not just confirming passes.
+
+**At scale:** Three golden examples are enough for a demo. A production quality gate would need a larger golden set
+with held-out failing cases to make the judge discriminating. The infrastructure already scales: `judge_example()` is
+`@observe`-decorated, new examples are fixture files, and Langfuse stores score history across runs. Phase 13's
+pattern relevance dimension is the next planned extension.
+
+---
+
 ## What changes at scale
 
 The current design is deliberately single-user and local-first. RESEARCH.md's Phase 18 documents the full production 

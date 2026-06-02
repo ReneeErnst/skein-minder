@@ -191,7 +191,10 @@ Traces appear under the `skein-minder` project in the Langfuse UI. Each `skeinmi
 
 ### Eval suite
 
-The eval suite has two layers: deterministic assertions (fast, no LLM, CI-safe) and LLM-as-judge scoring (logged to Langfuse).
+The eval suite has two layers:
+
+- **Deterministic assertions** (CI-safe, no LLM): recommended stash IDs are a subset of the input stash (no hallucination), no weight mixing across recommendations, recommendation count in range, `filter_confidence` correct for the scenario.
+- **LLM-as-judge** (manual, pre-demo): scores each result on `fit_score` (does the yarn suit the goal?) and `reasoning_score` (is the justification coherent?), both 1–5, logged as named Langfuse scores on the corresponding trace.
 
 ```bash
 # First-time setup: create the Langfuse dataset and upsert golden examples
