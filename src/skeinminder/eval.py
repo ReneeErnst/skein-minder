@@ -182,6 +182,7 @@ def run_example(example: EvalExample) -> GraphState:
     Stash is injected directly from the example rather than fetched from Ravelry.
     Uses fixture transport for pattern_search so no live Ravelry credentials needed.
     """
+    import uuid
     from typing import cast
 
     from skeinminder.graph.graph import build_graph
@@ -204,7 +205,8 @@ def run_example(example: EvalExample) -> GraphState:
             "ravelry_username": "fixture_user",
             "use_fixture": True,
             "pattern_candidates": [],
-        }
+        },
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
     )
     return cast(GraphState, result)
 

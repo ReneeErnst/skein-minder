@@ -4,6 +4,7 @@ from typing import Any, Literal, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langgraph.checkpoint.memory import MemorySaver
 
 from skeinminder.graph.graph import build_graph
 from skeinminder.graph.nodes import (
@@ -775,6 +776,22 @@ def test_format_stash_for_prompt_groups_same_yarn_colorway() -> None:
     assert "400" in lines[0]  # summed yardage
 
 
+# --- build_graph checkpointer ---
+
+
+def test_build_graph_uses_memorysaver_by_default() -> None:
+    """build_graph() should compile with a checkpointer so interrupt() works."""
+    graph = build_graph()
+    assert graph.checkpointer is not None
+
+
+def test_build_graph_accepts_custom_checkpointer() -> None:
+    """Callers can pass their own checkpointer instance."""
+    checkpointer = MemorySaver()
+    graph = build_graph(checkpointer=checkpointer)
+    assert graph.checkpointer is checkpointer
+
+
 # --- full graph integration (recommend mocked) ---
 
 
@@ -802,7 +819,8 @@ def test_graph_project_first_routes_and_formats(
                 mode="",
                 user_goal=None,
                 normalized_stash=normalized_stash,
-            )
+            ),
+            config={"configurable": {"thread_id": "test"}},
         )
 
     assert result["mode"] == "project_first"
@@ -825,7 +843,8 @@ def test_graph_stash_first_routes_and_formats(
                 mode="",
                 user_goal=None,
                 normalized_stash=normalized_stash,
-            )
+            ),
+            config={"configurable": {"thread_id": "test"}},
         )
 
     assert result["mode"] == "stash_first"
@@ -921,7 +940,8 @@ def test_graph_low_confidence_user_confirms() -> None:
                 mode="",
                 user_goal=None,
                 normalized_stash=[],  # empty → filtered_stash = [] → low confidence
-            )
+            ),
+            config={"configurable": {"thread_id": "test"}},
         )
 
     assert result["filter_confidence"] == "low"
@@ -933,7 +953,10 @@ def test_graph_low_confidence_user_confirms() -> None:
 def test_graph_low_confidence_user_declines() -> None:
     with patch("click.confirm", return_value=False), patch("click.echo"):
         graph = build_graph()
-        result = graph.invoke(_make_state(mode="", user_goal=None, normalized_stash=[]))
+        result = graph.invoke(
+            _make_state(mode="", user_goal=None, normalized_stash=[]),
+            config={"configurable": {"thread_id": "test"}},
+        )
 
     assert result["filter_confidence"] == "low"
     assert result["force_recommend"] is False

@@ -121,6 +121,8 @@ def _run_recommend(
         input={"user_goal": goal},
         tags=["cli"],
     )
+    import uuid
+
     graph = build_graph()
     result = graph.invoke(
         {
@@ -138,7 +140,8 @@ def _run_recommend(
             "ravelry_username": ravelry_username,
             "use_fixture": use_fixture,
             "pattern_candidates": [],
-        }
+        },
+        config={"configurable": {"thread_id": str(uuid.uuid4())}},
     )
     output: str = result.get("formatted_output") or "No recommendations generated."
     langfuse_context.update_current_trace(output={"formatted_output": output})

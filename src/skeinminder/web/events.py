@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
@@ -93,7 +94,11 @@ async def _invoke_graph(
         tags=["web"],
     )
     try:
-        async for event in graph.astream_events(initial_state, version="v2"):
+        async for event in graph.astream_events(
+            initial_state,
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            version="v2",
+        ):
             await event_queue.put(("event", event))
     except Exception as exc:
         await event_queue.put(("error", exc))

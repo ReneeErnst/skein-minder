@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -9,11 +12,14 @@ from skeinminder.graph import nodes
 from skeinminder.graph.state import GraphState
 
 
-def build_graph() -> CompiledStateGraph[GraphState]:
+def build_graph(checkpointer: Any | None = None) -> CompiledStateGraph[GraphState]:
     """Build and compile the recommendation graph.
 
     Nodes are referenced via the `nodes` module object so that
     patch('skeinminder.graph.nodes.<node>') works correctly in tests.
+    Compiles with a MemorySaver checkpointer by default so that interrupt()
+    works on the low-confidence path. Pass a custom checkpointer for tests
+    that need a shared instance.
     """
     workflow: StateGraph[GraphState] = StateGraph(GraphState)
 
@@ -51,4 +57,5 @@ def build_graph() -> CompiledStateGraph[GraphState]:
     workflow.add_edge("recommend", "format_output")
     workflow.add_edge("format_output", END)
 
-    return workflow.compile()
+    cp = checkpointer if checkpointer is not None else MemorySaver()
+    return workflow.compile(checkpointer=cp)
