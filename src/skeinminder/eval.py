@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -182,7 +183,6 @@ def run_example(example: EvalExample) -> GraphState:
     Stash is injected directly from the example rather than fetched from Ravelry.
     Uses fixture transport for pattern_search so no live Ravelry credentials needed.
     """
-    import uuid
     from typing import cast
 
     from skeinminder.graph.graph import build_graph

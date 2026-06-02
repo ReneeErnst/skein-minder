@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import click
@@ -121,8 +122,6 @@ def _run_recommend(
         input={"user_goal": goal},
         tags=["cli"],
     )
-    import uuid
-
     graph = build_graph()
     result = graph.invoke(
         {
