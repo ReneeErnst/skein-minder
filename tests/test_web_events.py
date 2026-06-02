@@ -107,7 +107,9 @@ def _run_stream(
 
     async def _collect() -> list[dict[str, Any]]:
         events = []
-        async for ev in stream_graph_events(goal, stash, username, use_fixture):
+        async for ev in stream_graph_events(
+            goal, stash, username, use_fixture, thread_id="test-thread"
+        ):
             events.append(json.loads(ev.removeprefix("data: ").strip()))
         return events
 
@@ -163,6 +165,7 @@ def test_stream_graph_events_emits_node_and_result_events(
     monkeypatch.chdir(tmp_path)
     mock_graph = MagicMock()
     mock_graph.astream_events = _fake_astream
+    mock_graph.get_state.return_value.next = ()
 
     with patch("skeinminder.web.events.build_graph", return_value=mock_graph):
         events = _run_stream("test goal", normalized_stash, "test_user", True)
@@ -185,6 +188,7 @@ def test_stream_graph_events_saves_last_run_json(
     monkeypatch.chdir(tmp_path)
     mock_graph = MagicMock()
     mock_graph.astream_events = _fake_astream
+    mock_graph.get_state.return_value.next = ()
 
     with patch("skeinminder.web.events.build_graph", return_value=mock_graph):
         _run_stream("test goal", normalized_stash, "test_user", True)
@@ -206,6 +210,7 @@ def test_stream_graph_events_emits_error_on_exception(
 
     mock_graph = MagicMock()
     mock_graph.astream_events = _boom
+    mock_graph.get_state.return_value.next = ()
 
     with patch("skeinminder.web.events.build_graph", return_value=mock_graph):
         events = _run_stream("test goal", normalized_stash, "test_user", True)
@@ -213,3 +218,52 @@ def test_stream_graph_events_emits_error_on_exception(
     assert any(e["type"] == "error" for e in events)
     error_event = next(e for e in events if e["type"] == "error")
     assert "graph exploded" in error_event["message"]
+
+
+def test_stream_graph_events_yields_pause_then_cancelled(
+    normalized_stash: list[Any],
+) -> None:
+    """Graph pause + cancel: SSE emits 'pause' then 'cancelled'."""
+    loop = asyncio.new_event_loop()
+    resume_future: asyncio.Future[bool] = loop.create_future()
+    resume_future.set_result(False)  # simulate immediate cancel
+
+    async def run() -> list[dict[str, Any]]:
+        async def fake_invoke(
+            graph: Any,
+            state: Any,
+            *,
+            config: Any,
+            goal: str,
+            event_queue: asyncio.Queue[tuple[str, Any]],
+            resume_future: asyncio.Future[bool] | None,
+        ) -> None:
+            await event_queue.put(
+                ("interrupted", {"message": "Low confidence.", "candidate_count": 0})
+            )
+            decision = await resume_future if resume_future is not None else False
+            if not decision:
+                await event_queue.put(("cancelled", None))
+            else:
+                await event_queue.put(("done", None))
+
+        with patch("skeinminder.web.events._invoke_graph", side_effect=fake_invoke):
+            events: list[dict[str, Any]] = []
+            async for ev in stream_graph_events(
+                "a cozy hat",
+                normalized_stash,
+                "testuser",
+                True,
+                thread_id="test-pause",
+                resume_future=resume_future,
+            ):
+                events.append(json.loads(ev.removeprefix("data: ").strip()))
+        return events
+
+    events = loop.run_until_complete(run())
+    loop.close()
+
+    event_types = [e.get("type") for e in events]
+    assert "pause" in event_types
+    assert "cancelled" in event_types
+    assert event_types.index("pause") < event_types.index("cancelled")
