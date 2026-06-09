@@ -1,8 +1,8 @@
 # SkeinMinder
 
-A Ravelry-powered multi-agent studio planner.
+A Ravelry-powered studio planner.
 
-Every knitter knows the problem: a stash full of beautiful yarn and no idea what to do with it. SkeinMinder connects to your Ravelry account, reads your stash, and uses a multi-agent LangGraph system to recommend feasible projects — matched to your yarn, your timeline, and your ambitions. It only writes back to Ravelry after you approve.
+Every knitter knows the problem: a stash full of beautiful yarn and no idea what to do with it. SkeinMinder connects to your Ravelry account, reads your stash, and uses a LangGraph pipeline to recommend feasible projects — matched to your yarn, your timeline, and your ambitions. It only writes back to Ravelry after you approve.
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TD
 ## Stack
 
 - Python 3.13 · uv · Pydantic v2
-- LangGraph (stateful multi-agent orchestration)
+- LangGraph (stateful graph orchestration)
 - FastAPI + uvicorn · SSE · vis-network (web UI)
 - httpx · tenacity (Ravelry API client, retry on 429/5xx)
 - Claude via `langchain-anthropic` (with prompt caching)

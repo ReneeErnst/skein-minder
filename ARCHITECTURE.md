@@ -17,7 +17,7 @@ between a good recommendation and a useless one is whether the yarn actually has
 specificity is what makes the engineering interesting — it's a real constraint-satisfaction problem, not a toy chatbot.
 
 The engineering goals, in order: real third-party API integration with typed models and graceful failure; stateful 
-multi-agent orchestration with correct routing; LLM calls that are scoped, reproducible, and observable; and a 
+graph orchestration with correct routing; LLM calls that are scoped, reproducible, and observable; and a 
 human-in-the-loop gate before any side effects. The web UI and Langfuse tracing are layer-on-top additions that make 
 those properties visible.
 
