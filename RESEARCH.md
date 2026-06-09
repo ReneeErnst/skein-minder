@@ -8,13 +8,13 @@ _Last updated: 2026-06-02_
 
 ## Engineering goals
 
-SkeinMinder is a production-shaped LangGraph application built on top of the Ravelry API. It reads a real Ravelry stash, uses multiple specialized agents to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint.
+SkeinMinder is a production-shaped LangGraph application built on top of the Ravelry API. It reads a real Ravelry stash, runs it through a pipeline of deterministic filter nodes and a single LLM reasoning step to evaluate project feasibility, and only writes back to Ravelry or external tools after a human approval checkpoint. The long-term architecture expands this into a multi-agent system; the current implementation is a pipeline.
 
 Key engineering themes:
 
 - API integration with a real third-party system.
 - Typed service-layer design.
-- Stateful multi-agent orchestration with LangGraph.
+- Stateful graph orchestration with LangGraph (expanding toward multi-agent as new write-back nodes are added).
 - Human-in-the-loop approvals before side effects.
 - Deterministic tool execution separated from LLM reasoning.
 - Observability, test fixtures, dry-run mode, retries, and validation.

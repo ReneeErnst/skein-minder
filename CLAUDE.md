@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-SkeinMinder is a Ravelry-powered multi-agent studio planner. It reads a user's real Ravelry yarn stash, uses specialized LangGraph agents to evaluate project feasibility, and only writes back to Ravelry or external tools (Google Calendar, Notion, etc.) after a human approval checkpoint.
+SkeinMinder is a Ravelry-powered studio planner. It reads a user's real Ravelry yarn stash, runs it through a LangGraph pipeline of deterministic filter nodes and a single LLM reasoning step to evaluate project feasibility, and only writes back to Ravelry or external tools (Google Calendar, Notion, etc.) after a human approval checkpoint.
 
 See `RESEARCH.md` for the full product concept, agent architecture, phased implementation plan, and open questions about Ravelry API behavior.
 
@@ -45,7 +45,7 @@ docker compose down -v # stop and delete volumes (reset all Langfuse data)
 ## Stack
 
 - Python 3.13, managed with `uv`
-- LangGraph for stateful multi-agent orchestration
+- LangGraph for stateful graph orchestration
 - langchain-anthropic for LLM calls (structured output via `with_structured_output`)
 - Pydantic v2 for models (`extra="ignore"` everywhere — Ravelry API fields evolve)
 - httpx for Ravelry API client, with tenacity retry on 429/5xx
